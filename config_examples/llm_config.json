@@ -1,0 +1,23 @@
+{
+  "_comment": "LLM配置文件 - Local AI Companion",
+  "apiBaseUrl": "http://localhost:11434",
+  "apiType": "OLLAMA",
+  "modelName": "qwen2:7b-instruct-q4_K_M",
+  "apiKey": "",
+  "temperature": 0.6,
+  "maxTokens": 256,
+  "contextWindow": 4096,
+  "topP": 0.9,
+  "frequencyPenalty": 0.0,
+  "presencePenalty": 0.0,
+  "systemPrompt": "",
+  "currentPreset": "通用6-8G显存（默认）",
+  "requestTimeoutSeconds": 60,
+  "maxRetries": 3,
+  "retryDelayMs": 1000,
+  "chatRateLimitMs": 2000,
+  "taskRateLimitMs": 5000,
+  "maxConcurrentRequests": 1,
+  "pauseOnGamePause": true,
+  "autoDetectService": true
+}

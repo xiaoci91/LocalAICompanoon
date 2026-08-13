@@ -1,0 +1,34 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+eclipse/
+
+# Minecraft Forge run directories
+run/
+logs/
+*.log
+
+# Compiled files
+*.class
+*.jar
+*.war
+*.ear
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local configs
+config/
+*.local

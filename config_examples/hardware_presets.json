@@ -1,0 +1,67 @@
+{
+  "_comment": "硬件预设配置 - Local AI Companion",
+  "_note": "根据你的电脑配置选择合适的预设，也可以手动修改参数",
+
+  "presets": [
+    {
+      "name": "最低4G显存",
+      "description": "低量化，性能优先。适合4G显存显卡。",
+      "modelName": "qwen2:7b-instruct-q2_K",
+      "contextWindow": 2048,
+      "maxTokens": 128,
+      "temperature": 0.7,
+      "apiType": "OLLAMA",
+      "warning": "低量化版本，回答质量可能略低"
+    },
+    {
+      "name": "CPU纯运行",
+      "description": "不需要显卡，纯CPU运行。速度较慢。",
+      "modelName": "qwen2:7b-instruct-q2_K",
+      "contextWindow": 2048,
+      "maxTokens": 128,
+      "temperature": 0.7,
+      "apiType": "OLLAMA",
+      "warning": "CPU运行速度较慢，请耐心等待"
+    },
+    {
+      "name": "通用6-8G显存（默认）",
+      "description": "大多数电脑推荐。平衡质量和速度。",
+      "modelName": "qwen2:7b-instruct-q4_K_M",
+      "contextWindow": 4096,
+      "maxTokens": 256,
+      "temperature": 0.6,
+      "apiType": "OLLAMA",
+      "warning": ""
+    },
+    {
+      "name": "12G显存高配",
+      "description": "可尝试13B量化模型，回答质量更好。",
+      "modelName": "qwen2:7b-instruct-q4_K_M",
+      "contextWindow": 8192,
+      "maxTokens": 256,
+      "temperature": 0.6,
+      "apiType": "OLLAMA",
+      "warning": "可以手动换成13B模型试试"
+    },
+    {
+      "name": "16G以上高性能",
+      "description": "长对话使用，回答质量最好。",
+      "modelName": "qwen2:14b-instruct-q4_K_M",
+      "contextWindow": 16384,
+      "maxTokens": 512,
+      "temperature": 0.6,
+      "apiType": "OLLAMA",
+      "warning": "14B模型加载较慢，首次启动请耐心等待"
+    },
+    {
+      "name": "云端API模式",
+      "description": "使用云端API，不需要本地显卡。需要自己填写API地址和密钥。",
+      "modelName": "",
+      "contextWindow": 0,
+      "maxTokens": 0,
+      "temperature": 0.0,
+      "apiType": "OPENAI_COMPATIBLE",
+      "warning": "需要自行购买API服务，注意费用"
+    }
+  ]
+}

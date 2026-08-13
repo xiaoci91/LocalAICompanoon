@@ -1,0 +1,69 @@
+{
+  "key.localaicompanion.open_panel": "打开AI同伴面板",
+  "key.localaicompanion.toggle": "召唤/解散AI同伴",
+  "key.localaicompanion.quick_talk": "快速对话",
+  "category.localaicompanion": "Local AI Companion",
+
+  "entity.localaicompanion.ai_companion": "AI同伴",
+
+  "gui.localaicompanion.title": "AI同伴 - 主面板",
+  "gui.localaicompanion.llm_settings": "LLM设置",
+  "gui.localaicompanion.task_manager": "任务管理",
+  "gui.localaicompanion.memory_manager": "记忆管理",
+  "gui.localaicompanion.security_settings": "安全权限",
+  "gui.localaicompanion.other_settings": "其他设置",
+
+  "gui.localaicompanion.status.connected": "● 已连接",
+  "gui.localaicompanion.status.disconnected": "● 未连接",
+  "gui.localaicompanion.status.connecting": "● 连接中...",
+
+  "gui.localaicompanion.warning.need_llm": "⚠ 本模组需要自行安装Ollama或其他本地大模型服务",
+  "gui.localaicompanion.warning.high_risk": "⚠ 高风险权限默认关闭，开启前请确认信任AI同伴",
+
+  "gui.localaicompanion.mode.survival": "生存队友模式",
+  "gui.localaicompanion.mode.roleplay": "角色扮演聊天模式",
+
+  "gui.localaicompanion.preset.low_4g": "最低4G显存",
+  "gui.localaicompanion.preset.cpu": "CPU纯运行",
+  "gui.localaicompanion.preset.medium_6_8g": "通用6-8G显存（默认）",
+  "gui.localaicompanion.preset.high_12g": "12G显存高配",
+  "gui.localaicompanion.preset.ultra_16g": "16G以上高性能",
+  "gui.localaicompanion.preset.cloud": "云端API模式",
+
+  "gui.localaicompanion.permission.break_blocks": "允许破坏方块",
+  "gui.localaicompanion.permission.place_blocks": "允许放置方块",
+  "gui.localaicompanion.permission.mine_ores": "允许采集矿石",
+  "gui.localaicompanion.permission.open_containers": "允许开启箱子/容器",
+  "gui.localaicompanion.permission.pickup_items": "允许拾取物品",
+  "gui.localaicompanion.permission.attack_mobs": "允许攻击怪物",
+  "gui.localaicompanion.permission.attack_animals": "允许攻击动物",
+  "gui.localaicompanion.permission.attack_players": "允许攻击玩家（绝对禁止）",
+
+  "gui.localaicompanion.emergency.lava": "岩浆紧急撤离",
+  "gui.localaicompanion.emergency.fire": "火焰紧急撤离",
+  "gui.localaicompanion.emergency.void": "虚空紧急撤离",
+
+  "gui.localaicompanion.summon": "召唤AI同伴",
+  "gui.localaicompanion.dismiss": "解散AI同伴",
+  "gui.localaicompanion.toggle_mode": "切换运行模式",
+  "gui.localaicompanion.test_connection": "测试连接",
+  "gui.localaicompanion.save_settings": "保存设置",
+
+  "message.localaicompanion.summoned": "AI同伴已召唤！试试和它说话吧~",
+  "message.localaicompanion.dismissed": "AI同伴已解散，记忆已保留",
+  "message.localaicompanion.settings_saved": "设置已保存",
+  "message.localaicompanion.connection_success": "连接成功！",
+  "message.localaicompanion.connection_failed": "连接失败，请检查API地址",
+  "message.localaicompanion.oom_detected": "显存不足！请切换更小量化的模型",
+  "message.localaicompanion.task_timeout": "任务超时了，我回来了",
+  "message.localaicompanion.danger_detected": "不好！遇到{type}了，我先撤了！",
+  "message.localaicompanion.permission_denied": "这个操作没有权限哦，需要在设置里开启",
+  "message.localaicompanion.cannot_understand": "抱歉，我没听懂你的意思~",
+
+  "command.localaicompanion.help.title": "===== AI同伴命令 =====",
+  "command.localaicompanion.help.summon": "/companion summon - 召唤AI同伴",
+  "command.localaicompanion.help.dismiss": "/companion dismiss - 解散AI同伴",
+  "command.localaicompanion.help.talk": "/companion talk <消息> - 和AI同伴说话",
+  "command.localaicompanion.help.ai": "/ai <消息> - 快捷说话",
+  "command.localaicompanion.help.status": "/companion status - 查看状态"
+}

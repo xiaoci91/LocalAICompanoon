@@ -1,0 +1,56 @@
+[
+  {
+    "id": "mem_001",
+    "category": "player_name",
+    "content": "玩家的名字叫Steve",
+    "description": "玩家的名字",
+    "createdAt": 1723600000000,
+    "updatedAt": 1723600000000,
+    "importance": 8
+  },
+  {
+    "id": "mem_002",
+    "category": "player_preference",
+    "content": "玩家喜欢挖矿，特别是钻石矿",
+    "description": "玩家的爱好",
+    "createdAt": 1723600500000,
+    "updatedAt": 1723600500000,
+    "importance": 6
+  },
+  {
+    "id": "mem_003",
+    "category": "player_preference",
+    "content": "玩家不喜欢爬行者（苦力怕）",
+    "description": "玩家讨厌的东西",
+    "createdAt": 1723601000000,
+    "updatedAt": 1723601000000,
+    "importance": 5
+  },
+  {
+    "id": "mem_004",
+    "category": "world_info",
+    "content": "玩家的家在出生点东边，有一个很大的地下室",
+    "description": "玩家基地位置",
+    "createdAt": 1723602000000,
+    "updatedAt": 1723602000000,
+    "importance": 9
+  },
+  {
+    "id": "mem_005",
+    "category": "game_progress",
+    "content": "玩家已经挖到了钻石，做了钻石镐",
+    "description": "游戏进度",
+    "createdAt": 1723603000000,
+    "updatedAt": 1723603000000,
+    "importance": 4
+  },
+  {
+    "id": "mem_006",
+    "category": "custom",
+    "content": "玩家说要记住：不要碰他的箱子",
+    "description": "玩家要求记住的内容",
+    "createdAt": 1723604000000,
+    "updatedAt": 1723604000000,
+    "importance": 10
+  }
+]

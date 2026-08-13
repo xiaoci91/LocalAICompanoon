@@ -1,0 +1,16 @@
+{
+  "_comment": "主配置文件 - Local AI Companion",
+  "runMode": "SURVIVAL_TEAMMATE",
+  "companionName": "小艾",
+  "defaultSkin": "steve",
+  "maxConcurrentTasks": 3,
+  "defaultTaskTimeoutSeconds": 120,
+  "maxRetriesPerTask": 2,
+  "followDistance": 3.0,
+  "teleportDistance": 32.0,
+  "dropInventoryOnDeath": true,
+  "enableAutoSave": true,
+  "autoSaveIntervalMinutes": 5,
+  "enableChatPrefix": true,
+  "chatPrefix": "@小艾"
+}

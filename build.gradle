@@ -33,6 +33,7 @@ dependencies {
     // OkHttp - async HTTP client for LLM communication
     include implementation("com.squareup.okhttp3:okhttp:${project.okhttp_version}")
     include implementation("com.squareup.okio:okio:3.6.0")
+    include implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10")
 
     // Jackson - JSON serialization
     include implementation("com.fasterxml.jackson.core:jackson-databind:${project.jackson_version}")

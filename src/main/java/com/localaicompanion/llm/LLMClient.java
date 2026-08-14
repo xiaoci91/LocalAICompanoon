@@ -414,32 +414,47 @@ public class LLMClient {
     }
 
     /**
-     * 测试连接
+     * 测试连接（真测试：发一个最小的生成请求，验证服务+模型都可用）
      */
     public CompletableFuture<Boolean> testConnection() {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
 
         requestExecutor.submit(() -> {
             try {
-                // 发送一个简单的测试请求
-                String url = config.apiBaseUrl;
-                // Ollama: GET /api/tags
-                // OpenAI兼容: GET /v1/models
-                String testEndpoint;
+                String url = config.getFullApiUrl();
+
+                // 构建一个最小的测试请求（max_tokens=1，只测能不能通）
+                String testBody;
                 switch (config.getApiTypeEnum()) {
                     case OLLAMA:
-                        testEndpoint = "/api/tags";
+                        testBody = String.format(
+                            "{\"model\":\"%s\",\"prompt\":\"hi\",\"max_tokens\":1,\"stream\":false}",
+                            config.modelName
+                        );
+                        break;
+                    case OPENAI_COMPATIBLE:
+                    case LM_STUDIO:
+                        testBody = String.format(
+                            "{\"model\":\"%s\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}",
+                            config.modelName
+                        );
+                        break;
+                    case LLAMA_CPP:
+                        testBody = "{\"prompt\":\"hi\",\"n_predict\":1,\"stream\":false}";
                         break;
                     default:
-                        testEndpoint = "/v1/models";
+                        testBody = "{}";
                 }
 
-                String fullUrl = url.endsWith("/") ? url.substring(0, url.length() - 1) + testEndpoint : url + testEndpoint;
+                Request.Builder requestBuilder = new Request.Builder()
+                    .url(url)
+                    .post(RequestBody.create(JSON, testBody));
 
-                Request request = new Request.Builder()
-                    .url(fullUrl)
-                    .get()
-                    .build();
+                if (config.apiKey != null && !config.apiKey.isEmpty()) {
+                    requestBuilder.header("Authorization", "Bearer " + config.apiKey);
+                }
+
+                Request request = requestBuilder.build();
 
                 try (Response response = httpClient.newCall(request).execute()) {
                     boolean success = response.isSuccessful();

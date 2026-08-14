@@ -6,6 +6,7 @@ import com.localaicompanion.task.pathing.EntityNavigationPathingService;
 import com.localaicompanion.task.pathing.PathingService;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributes;
@@ -32,6 +33,7 @@ import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
@@ -178,6 +180,41 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
         if (wanderTimer >= 100 && isIdle()) {
             tryWander();
             wanderTimer = 0;
+        }
+
+        // 物品自动拾取（每10 tick检查一次）
+        if (this.age % 10 == 0) {
+            pickupNearbyItems();
+        }
+    }
+
+    /**
+     * 拾取附近的掉落物
+     */
+    private void pickupNearbyItems() {
+        if (getWorld().isClient) return;
+
+        // 搜索半径1.5格内的物品
+        Box searchBox = this.getBoundingBox().expand(1.5);
+        java.util.List<ItemEntity> items = getWorld().getEntitiesByClass(ItemEntity.class, searchBox, e -> true);
+
+        for (ItemEntity itemEntity : items) {
+            if (!itemEntity.isAlive()) continue;
+
+            ItemStack stack = itemEntity.getStack();
+            if (stack.isEmpty()) continue;
+
+            // 尝试放进背包
+            ItemStack remaining = inventory.addStack(stack);
+
+            if (remaining.isEmpty()) {
+                // 全部放进去了，销毁物品实体
+                itemEntity.discard();
+                LocalAICompanion.LOGGER.debug("[AICompanion] 拾取物品: {}", stack.getItem().getName().getString());
+            } else {
+                // 没放完，更新物品实体的数量
+                itemEntity.setStack(remaining);
+            }
         }
     }
 

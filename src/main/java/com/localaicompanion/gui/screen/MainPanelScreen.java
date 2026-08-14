@@ -1,5 +1,6 @@
 package com.localaicompanion.gui.screen;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.HardwarePresetConfig;
 import com.localaicompanion.config.LLMConfig;
 import com.localaicompanion.config.MainConfig;
@@ -102,7 +103,9 @@ public class MainPanelScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("LLM设置"),
             button -> {
-                // this.client.setScreen(new LLMSettingsScreen(this, ...));
+                if (this.client != null) {
+                    this.client.setScreen(new LLMSettingsScreen(this, llmConfig, presetConfig));
+                }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
@@ -111,7 +114,9 @@ public class MainPanelScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("任务管理"),
             button -> {
-                // this.client.setScreen(new TaskManagerScreen(this, ...));
+                if (this.client != null) {
+                    this.client.setScreen(new TaskManagerScreen(this, LocalAICompanion.getInstance().getTaskScheduler()));
+                }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
@@ -120,7 +125,9 @@ public class MainPanelScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("记忆管理"),
             button -> {
-                // this.client.setScreen(new MemoryManagerScreen(this, ...));
+                if (this.client != null) {
+                    this.client.setScreen(new MemoryManagerScreen(this, LocalAICompanion.getInstance().getMemoryManager()));
+                }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
@@ -129,16 +136,24 @@ public class MainPanelScreen extends Screen {
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("安全权限"),
             button -> {
-                // this.client.setScreen(new SecurityScreen(this, ...));
+                if (this.client != null) {
+                    this.client.setScreen(new SecurityScreen(
+                        this,
+                        LocalAICompanion.getInstance().getConfigManager().getPermissionConfig(),
+                        LocalAICompanion.getInstance().getSecuritySandbox()
+                    ));
+                }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
 
-        // 其他设置
+        // 其他设置（暂时打开LLM设置，后续可扩展）
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("其他设置"),
             button -> {
-                // this.client.setScreen(new SettingsScreen(this, ...));
+                if (this.client != null) {
+                    this.client.setScreen(new LLMSettingsScreen(this, llmConfig, presetConfig));
+                }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 35;

@@ -5,11 +5,11 @@
   "name": "Local AI Companion",
   "description": "本地离线大模型驱动的AI生存同伴模组，支持Ollama/LM-Studio等本地LLM服务。完全离线运行，保护存档安全。",
   "authors": [
-    "LocalAICompanion Team"
+    "xiaoci"
   ],
   "contact": {
-    "homepage": "https://github.com/LocalAICompanion/LocalAICompanion",
-    "sources": "https://github.com/LocalAICompanion/LocalAICompanion"
+    "homepage": "https://github.com/xiaoci91/LocalAICompanoon",
+    "sources": "https://github.com/xiaoci91/LocalAICompanoon"
   },
   "license": "MIT",
   "icon": "assets/localaicompanion/icon.png",

@@ -1,5 +1,7 @@
 package com.localaicompanion.gui;
 
+import com.localaicompanion.LocalAICompanion;
+import com.localaicompanion.gui.screen.MainPanelScreen;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -44,15 +46,25 @@ public class KeyBindings {
     public static void tick(net.minecraft.client.MinecraftClient client) {
         while (openCompanionPanel.wasPressed()) {
             // 打开同伴面板GUI
-            // client.setScreen(new MainPanelScreen());
+            if (client.world != null) {
+                client.setScreen(new MainPanelScreen(
+                    null,
+                    LocalAICompanion.getInstance().getConfigManager().getMainConfig(),
+                    LocalAICompanion.getInstance().getConfigManager().getLLMConfig(),
+                    LocalAICompanion.getInstance().getConfigManager().getHardwarePresetConfig()
+                ));
+            }
         }
 
         while (toggleCompanion.wasPressed()) {
             // 切换同伴召唤状态
+            if (client.player != null) {
+                client.player.networkHandler.sendChatCommand("companion summon");
+            }
         }
 
         while (quickTalk.wasPressed()) {
-            // 打开快速聊天输入框
+            // 打开快速聊天输入框（暂未实现）
         }
     }
 }

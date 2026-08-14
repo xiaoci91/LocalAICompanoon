@@ -30,10 +30,9 @@ dependencies {
     // Fabric API
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-    // OkHttp - async HTTP client for LLM communication
+    // OkHttp - async HTTP client for LLM communication (3.x pure Java, no Kotlin deps)
     include implementation("com.squareup.okhttp3:okhttp:${project.okhttp_version}")
-    include implementation("com.squareup.okio:okio:3.6.0")
-    include implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10")
+    include implementation("com.squareup.okio:okio:1.17.5")
 
     // Jackson - JSON serialization
     include implementation("com.fasterxml.jackson.core:jackson-databind:${project.jackson_version}")

@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class LLMClient {
     private static final Logger LOGGER = LoggerFactory.getLogger("LocalAICompanion-LLM");
-    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     private final OkHttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -219,7 +219,7 @@ public class LLMClient {
 
         Request.Builder requestBuilder = new Request.Builder()
             .url(url)
-            .post(RequestBody.create(requestBody, JSON));
+            .post(RequestBody.create(JSON, requestBody));
 
         // 添加API密钥（如果有）
         if (config.apiKey != null && !config.apiKey.isEmpty()) {

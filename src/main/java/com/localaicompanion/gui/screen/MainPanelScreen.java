@@ -45,6 +45,13 @@ public class MainPanelScreen extends Screen {
         int centerX = this.width / 2;
         int y = 30;
 
+        // 从LLM客户端获取真实连接状态
+        try {
+            this.connected = LocalAICompanion.getInstance().getLLMClient().isConnected();
+        } catch (Exception e) {
+            this.connected = false;
+        }
+
         // 标题
         TextWidget title = new TextWidget(
             centerX - 100, y, 200, 20,

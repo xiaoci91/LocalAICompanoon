@@ -1,5 +1,6 @@
 package com.localaicompanion.gui.screen;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.HardwarePresetConfig;
 import com.localaicompanion.config.LLMConfig;
 import net.minecraft.client.gui.screen.Screen;
@@ -217,7 +218,39 @@ public class LLMSettingsScreen extends Screen {
     }
 
     private void testConnection() {
-        // 测试连接逻辑
+        // 先把当前输入的值更新到config（临时，不保存到文件）
+        config.apiBaseUrl = apiUrlField.getText();
+        config.modelName = modelField.getText();
+        config.currentPreset = selectedPreset;
+
+        try {
+            config.temperature = Float.parseFloat(temperatureField.getText());
+        } catch (NumberFormatException ignored) {}
+
+        try {
+            config.maxTokens = Integer.parseInt(maxTokensField.getText());
+        } catch (NumberFormatException ignored) {}
+
+        try {
+            config.contextWindow = Integer.parseInt(contextWindowField.getText());
+        } catch (NumberFormatException ignored) {}
+
+        config.systemPrompt = systemPromptField.getText();
+
+        // 调用LLM客户端测试连接
+        if (this.client != null && this.client.player != null) {
+            this.client.player.sendMessage(Text.literal("正在测试连接..."), true);
+        }
+
+        LocalAICompanion.getInstance().getLLMClient().testConnection().thenAccept(success -> {
+            if (this.client != null && this.client.player != null) {
+                if (success) {
+                    this.client.player.sendMessage(Text.literal("✓ 连接成功！").formatted(Formatting.GREEN), true);
+                } else {
+                    this.client.player.sendMessage(Text.literal("✗ 连接失败，请检查API地址和模型服务是否启动").formatted(Formatting.RED), true);
+                }
+            }
+        });
     }
 
     private void saveSettings() {

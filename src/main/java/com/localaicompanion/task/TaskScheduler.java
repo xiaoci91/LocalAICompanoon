@@ -55,11 +55,20 @@ public class TaskScheduler {
     // AI同伴实体
     private AICompanionEntity companionEntity;
 
-    // 配置
-    private MainConfig config;
-
     // 调度器是否运行中
     private volatile boolean running = true;
+
+    /**
+     * 动态获取配置（避免持有旧引用导致null或不同步）
+     */
+    private MainConfig getConfig() {
+        MainConfig config = LocalAICompanion.getInstance().getConfigManager().getMainConfig();
+        if (config == null) {
+            // 兜底：返回默认配置，防止NPE
+            return new MainConfig();
+        }
+        return config;
+    }
 
     // 上次tick时间
     private long lastTickTime = 0;
@@ -86,7 +95,6 @@ public class TaskScheduler {
     public void initialize(AICompanionEntity entity, PathingService pathingService, MainConfig config) {
         this.companionEntity = entity;
         this.pathingService = pathingService;
-        this.config = config;
         this.running = true;
         LOGGER.info("[TaskScheduler] 任务调度器已初始化");
     }
@@ -104,7 +112,7 @@ public class TaskScheduler {
         }
 
         // 检查队列是否已满
-        if (taskQueue.size() >= config.maxConcurrentTasks + 5) {
+        if (taskQueue.size() >= getConfig().maxConcurrentTasks + 5) {
             LOGGER.warn("[TaskScheduler] 任务队列已满");
             return false;
         }
@@ -329,7 +337,7 @@ public class TaskScheduler {
             return;
         }
 
-        pathingService.followEntity(task.getOwner(), config.followDistance);
+        pathingService.followEntity(task.getOwner(), getConfig().followDistance);
         // 跟随任务不自动完成，持续执行直到被取消
     }
 

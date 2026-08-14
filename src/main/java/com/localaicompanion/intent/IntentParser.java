@@ -223,6 +223,38 @@ public class IntentParser {
             return ParseResult.task(task);
         }
 
+        // 砍树
+        if (lower.contains("砍树") || lower.contains("砍木头") || lower.contains("砍点树") ||
+            lower.contains("chop") || lower.contains("wood")) {
+            StandardTask task = new StandardTask(IntentType.CHOP_WOOD, "oak_log", 10, "好的，我去砍树！");
+            return ParseResult.task(task);
+        }
+
+        // 挖矿
+        if (lower.contains("挖矿") || lower.contains("挖点矿") || lower.contains("挖石头") ||
+            lower.contains("mine") || lower.contains("mining")) {
+            String target = "stone";
+            int amount = 10;
+            if (lower.contains("铁") || lower.contains("iron")) target = "iron_ore";
+            else if (lower.contains("煤") || lower.contains("coal")) target = "coal_ore";
+            else if (lower.contains("钻石") || lower.contains("diamond")) target = "diamond_ore";
+            else if (lower.contains("金") || lower.contains("gold")) target = "gold_ore";
+            StandardTask task = new StandardTask(IntentType.MINE, target, amount, "好的，我去挖矿！");
+            return ParseResult.task(task);
+        }
+
+        // 采集
+        if (lower.contains("采集") || lower.contains("收集") || lower.contains("collect") || lower.contains("gather")) {
+            StandardTask task = new StandardTask(IntentType.COLLECT, null, 10, "好的，我去采集！");
+            return ParseResult.task(task);
+        }
+
+        // 探索
+        if (lower.contains("探索") || lower.contains("explore")) {
+            StandardTask task = new StandardTask(IntentType.EXPLORE, null, 0, "好的，我去周围看看！");
+            return ParseResult.task(task);
+        }
+
         return ParseResult.chat(text);
     }
 

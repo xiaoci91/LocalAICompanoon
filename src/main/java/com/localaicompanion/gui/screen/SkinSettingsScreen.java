@@ -47,8 +47,8 @@ public class SkinSettingsScreen extends Screen {
     @Override
     protected void init() {
         int centerX = this.width / 2;
-        int y = 40;
-        int fieldWidth = 240;
+        int y = 30;
+        int fieldWidth = 260;
 
         // 标题
         TextWidget title = new TextWidget(
@@ -57,36 +57,39 @@ public class SkinSettingsScreen extends Screen {
             this.textRenderer
         );
         this.addDrawableChild(title);
-        y += 40;
+        y += 35;
 
-        // 皮肤类型按钮
-        TextWidget typeLabel = new TextWidget(
-            centerX - fieldWidth / 2, y, 80, 20,
-            Text.literal("皮肤类型:"),
+        // 说明
+        TextWidget intro = new TextWidget(
+            centerX - fieldWidth / 2, y, fieldWidth, 15,
+            Text.literal("点击按钮切换皮肤类型").formatted(Formatting.GRAY),
             this.textRenderer
         );
-        this.addDrawableChild(typeLabel);
+        this.addDrawableChild(intro);
+        y += 25;
 
+        // 皮肤类型按钮
         skinTypeButton = ButtonWidget.builder(
-            Text.literal(getSkinTypeName()),
+            Text.literal("当前: " + getSkinTypeName()),
             button -> cycleSkinType()
-        ).dimensions(centerX - fieldWidth / 2 + 85, y, fieldWidth - 85, 20).build();
+        ).dimensions(centerX - fieldWidth / 2, y, fieldWidth, 25).build();
         this.addDrawableChild(skinTypeButton);
-        y += 35;
+        y += 40;
 
         // 自定义皮肤路径（仅当选择自定义时显示）
         if (currentSkinIndex == 2) {
             TextWidget pathLabel = new TextWidget(
-                centerX - fieldWidth / 2, y, 80, 20,
-                Text.literal("皮肤路径:"),
+                centerX - fieldWidth / 2, y, fieldWidth, 15,
+                Text.literal("皮肤PNG文件完整路径：").formatted(Formatting.YELLOW),
                 this.textRenderer
             );
             this.addDrawableChild(pathLabel);
+            y += 20;
 
             skinPathField = new TextFieldWidget(
                 this.textRenderer,
-                centerX - fieldWidth / 2 + 85, y,
-                fieldWidth - 85, 20,
+                centerX - fieldWidth / 2, y,
+                fieldWidth, 20,
                 Text.literal("皮肤路径")
             );
             skinPathField.setText(mainConfig.customSkinPath);
@@ -94,24 +97,65 @@ public class SkinSettingsScreen extends Screen {
             this.addDrawableChild(skinPathField);
             y += 30;
 
-            // 提示
-            TextWidget tip = new TextWidget(
-                centerX - fieldWidth / 2, y, fieldWidth, 30,
-                Text.literal("填写本地PNG文件完整路径，例如：C:\\skins\\my_skin.png").formatted(Formatting.GRAY),
+            // 使用说明
+            TextWidget tip1 = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("使用方法：").formatted(Formatting.GOLD),
                 this.textRenderer
             );
-            this.addDrawableChild(tip);
-            y += 35;
+            this.addDrawableChild(tip1);
+            y += 14;
+
+            TextWidget tip2 = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("1. 准备一张64x64或64x32的皮肤PNG文件"),
+                this.textRenderer
+            );
+            this.addDrawableChild(tip2);
+            y += 12;
+
+            TextWidget tip3 = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("2. 把文件放在电脑里，比如桌面"),
+                this.textRenderer
+            );
+            this.addDrawableChild(tip3);
+            y += 12;
+
+            TextWidget tip4 = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("3. 复制完整路径粘贴到上面的输入框"),
+                this.textRenderer
+            );
+            this.addDrawableChild(tip4);
+            y += 12;
+
+            TextWidget tip5 = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("4. 保存后重新召唤AI同伴即可生效"),
+                this.textRenderer
+            );
+            this.addDrawableChild(tip5);
+            y += 15;
+
+            // 示例
+            TextWidget example = new TextWidget(
+                centerX - fieldWidth / 2, y, fieldWidth, 12,
+                Text.literal("示例：C:\\Users\\你的用户名\\Desktop\\skin.png").formatted(Formatting.GRAY),
+                this.textRenderer
+            );
+            this.addDrawableChild(example);
+            y += 25;
         }
 
         // 状态提示
         statusWidget = new TextWidget(
-            centerX - fieldWidth / 2, y, fieldWidth, 20,
+            centerX - fieldWidth / 2, y, fieldWidth, 15,
             Text.literal(""),
             this.textRenderer
         );
         this.addDrawableChild(statusWidget);
-        y += 25;
+        y += 20;
 
         // 保存返回按钮
         this.addDrawableChild(ButtonWidget.builder(

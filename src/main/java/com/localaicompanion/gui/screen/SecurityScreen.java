@@ -174,11 +174,15 @@ public class SecurityScreen extends Screen {
     }
 
     private void openBlacklistScreen() {
-        // 打开方块黑名单管理界面
+        if (this.client != null) {
+            this.client.setScreen(new BlacklistScreen(this, permissionConfig));
+        }
     }
 
     private void openSafeZoneScreen() {
-        // 打开安全区域管理界面
+        if (this.client != null) {
+            this.client.setScreen(new SafeZoneScreen(this, permissionConfig));
+        }
     }
 
     /**

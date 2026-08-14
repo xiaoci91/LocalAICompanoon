@@ -3,8 +3,10 @@ package com.localaicompanion.gui;
 import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.gui.screen.MainPanelScreen;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -59,12 +61,15 @@ public class KeyBindings {
         while (toggleCompanion.wasPressed()) {
             // 切换同伴召唤状态
             if (client.player != null) {
-                client.player.networkHandler.sendChatCommand("companion summon");
+                client.player.networkHandler.sendChatCommand("companion toggle");
             }
         }
 
         while (quickTalk.wasPressed()) {
-            // 打开快速聊天输入框（暂未实现）
+            // 快速对话：打开聊天框并自动输入 /ai 前缀
+            if (client.currentScreen == null) {
+                client.setScreen(new ChatScreen("/ai "));
+            }
         }
     }
 }

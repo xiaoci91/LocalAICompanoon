@@ -133,14 +133,15 @@ public class MemoryManagerScreen extends Screen {
     }
 
     private void addNewMemory() {
-        // 打开新增记忆对话框
-        memoryManager.addLongTermMemory("custom", "新记忆内容", "玩家手动添加");
-        memoryList = memoryManager.getAllLongTermMemory();
-        this.clearAndInit();
+        if (this.client != null) {
+            this.client.setScreen(new MemoryEditScreen(this, memoryManager, null));
+        }
     }
 
     private void editMemory(String id) {
-        // 打开编辑对话框
+        if (this.client != null) {
+            this.client.setScreen(new MemoryEditScreen(this, memoryManager, id));
+        }
     }
 
     private void deleteMemory(String id) {

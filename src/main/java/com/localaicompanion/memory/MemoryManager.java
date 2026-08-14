@@ -233,6 +233,33 @@ public class MemoryManager {
     }
 
     /**
+     * 更新长期记忆（含分类）
+     */
+    public boolean updateLongTermMemory(String id, String category, String newContent) {
+        for (LongTermMemoryEntry entry : longTermMemory) {
+            if (entry.id.equals(id)) {
+                entry.category = category;
+                entry.content = newContent;
+                entry.updatedAt = System.currentTimeMillis();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 根据ID获取长期记忆
+     */
+    public LongTermMemoryEntry getLongTermMemory(String id) {
+        for (LongTermMemoryEntry entry : longTermMemory) {
+            if (entry.id.equals(id)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 删除长期记忆
      */
     public boolean deleteLongTermMemory(String id) {

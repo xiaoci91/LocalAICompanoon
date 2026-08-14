@@ -196,8 +196,8 @@ public class AICompanionEntity extends AnimalEntity {
             double targetZ = this.getZ() + Math.sin(angle) * distance;
             double targetY = this.getY();
 
-            // 设置移动目标（速度接近玩家正常行走速度）
-            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 0.4);
+            // 设置移动目标（速度和玩家差不多）
+            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 1.0);
         } catch (Exception e) {
             // 忽略游荡错误
         }

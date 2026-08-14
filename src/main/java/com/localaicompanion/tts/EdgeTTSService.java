@@ -6,181 +6,187 @@ import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
+import javax.sound.sampled.*;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.io.InputStream;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Edge TTS 语音服务客户端
+ *
  * 对接本地 Edge TTS Python 服务
+ * 服务默认端口 8880
  */
 public class EdgeTTSService {
     private static final Logger LOGGER = LoggerFactory.getLogger("LocalAICompanion-TTS");
 
-    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-
     private final OkHttpClient httpClient;
-    private final ExecutorService audioExecutor;
-
-    // 当前正在播放的音频（用于停止）
     private Clip currentClip;
+    private volatile boolean playing = false;
 
     public EdgeTTSService() {
         this.httpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
             .build();
-
-        // 单线程音频播放执行器
-        this.audioExecutor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "tts-audio-thread");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     /**
-     * 获取最新配置
-     */
-    private MainConfig getConfig() {
-        return LocalAICompanion.getInstance().getConfigManager().getMainConfig();
-    }
-
-    /**
-     * 检查 TTS 是否启用
-     */
-    public boolean isEnabled() {
-        return getConfig().enableTTS;
-    }
-
-    /**
-     * 文本转语音并播放（异步）
+     * 播放语音（异步，不阻塞游戏线程）
      */
     public void speak(String text) {
-        if (!isEnabled() || text == null || text.isEmpty()) {
-            return;
-        }
+        if (text == null || text.isEmpty()) return;
 
-        audioExecutor.submit(() -> {
+        MainConfig config = LocalAICompanion.getInstance().getConfigManager().getMainConfig();
+        if (!config.enableTTS) return;
+
+        // 异步执行，不阻塞游戏线程
+        new Thread(() -> {
             try {
-                byte[] audioData = synthesize(text);
-                if (audioData != null) {
-                    playAudio(audioData);
-                }
+                speakSync(text);
             } catch (Exception e) {
-                LOGGER.error("[TTS] 语音播放失败", e);
+                LOGGER.warn("[TTS] 语音播放失败: {}", e.getMessage());
             }
-        });
+        }, "TTS-Playback").start();
     }
 
     /**
-     * 文本转语音，返回 WAV 音频数据
+     * 同步播放语音（内部方法）
      */
-    public byte[] synthesize(String text) throws IOException {
-        MainConfig config = getConfig();
+    private void speakSync(String text) throws Exception {
+        MainConfig config = LocalAICompanion.getInstance().getConfigManager().getMainConfig();
 
+        // 停止当前播放
+        stop();
+
+        // 构建请求
         String url = config.ttsServerUrl + "/v1/audio/speech";
 
-        // 构建请求体
-        String json = String.format(
-            "{\"input\":\"%s\",\"voice\":\"%s\",\"speed\":%.2f,\"response_format\":\"wav\"}",
-            escapeJson(text),
-            config.ttsVoice,
-            config.ttsSpeed
+        String json = "{" +
+            "\"input\":\"" + escapeJson(text) + "\"," +
+            "\"voice\":\"" + escapeJson(config.ttsVoice) + "\"," +
+            "\"speed\":" + config.ttsSpeed + "," +
+            "\"response_format\":\"wav\"" +
+            "}";
+
+        RequestBody body = RequestBody.create(
+            MediaType.parse("application/json"),
+            json
         );
 
         Request request = new Request.Builder()
             .url(url)
-            .post(RequestBody.create(JSON, json))
+            .post(body)
             .build();
 
+        // 发送请求
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
-                String errorBody = response.body() != null ? response.body().string() : "";
-                LOGGER.error("[TTS] 合成失败: HTTP {} - {}", response.code(), errorBody);
-                return null;
+                throw new IOException("HTTP " + response.code());
             }
 
-            return response.body() != null ? response.body().bytes() : null;
+            ResponseBody responseBody = response.body();
+            if (responseBody == null) {
+                throw new IOException("响应体为空");
+            }
+
+            byte[] audioData = responseBody.bytes();
+            playWav(audioData);
         }
     }
 
     /**
      * 播放 WAV 音频数据
      */
-    private void playAudio(byte[] audioData) {
-        try {
-            // 停止当前播放的音频
-            stopCurrentAudio();
+    private void playWav(byte[] audioData) throws Exception {
+        InputStream inputStream = new ByteArrayInputStream(audioData);
+        AudioInputStream audioStream = AudioSystem.getAudioInputStream(inputStream);
 
-            ByteArrayInputStream bais = new ByteArrayInputStream(audioData);
-            AudioInputStream ais = AudioSystem.getAudioInputStream(bais);
+        currentClip = AudioSystem.getClip();
+        currentClip.open(audioStream);
+        playing = true;
 
-            Clip clip = AudioSystem.getClip();
-            clip.open(ais);
-            clip.start();
-
-            currentClip = clip;
-
-            // 等待播放完成
-            while (clip.isRunning()) {
-                Thread.sleep(100);
-            }
-
-            clip.close();
-            if (currentClip == clip) {
+        currentClip.addLineListener(event -> {
+            if (event.getType() == LineEvent.Type.STOP) {
+                playing = false;
+                try {
+                    currentClip.close();
+                } catch (Exception e) {
+                    // ignore
+                }
                 currentClip = null;
             }
+        });
 
-        } catch (Exception e) {
-            LOGGER.error("[TTS] 音频播放失败", e);
+        currentClip.start();
+
+        // 等待播放完成（最多等30秒）
+        long startTime = System.currentTimeMillis();
+        while (playing && System.currentTimeMillis() - startTime < 30000) {
+            Thread.sleep(100);
         }
     }
 
     /**
-     * 停止当前播放的音频
+     * 停止当前播放
      */
-    public void stopCurrentAudio() {
-        if (currentClip != null && currentClip.isRunning()) {
+    public void stop() {
+        playing = false;
+        if (currentClip != null) {
             try {
-                currentClip.stop();
+                if (currentClip.isRunning()) {
+                    currentClip.stop();
+                }
                 currentClip.close();
             } catch (Exception e) {
-                // 忽略
+                // ignore
             }
             currentClip = null;
         }
     }
 
     /**
-     * 检查 TTS 服务是否可用
+     * 测试连接（异步返回结果）
      */
-    public boolean checkService() {
-        try {
-            MainConfig config = getConfig();
-            String url = config.ttsServerUrl + "/health";
+    public CompletableFuture<String> testConnection() {
+        CompletableFuture<String> future = new CompletableFuture<>();
 
-            Request request = new Request.Builder()
-                .url(url)
-                .get()
-                .build();
+        new Thread(() -> {
+            try {
+                MainConfig config = LocalAICompanion.getInstance().getConfigManager().getMainConfig();
+                String url = config.ttsServerUrl + "/health";
 
-            try (Response response = httpClient.newCall(request).execute()) {
-                return response.isSuccessful();
+                Request request = new Request.Builder()
+                    .url(url)
+                    .get()
+                    .build();
+
+                try (Response response = httpClient.newCall(request).execute()) {
+                    if (response.isSuccessful()) {
+                        future.complete(null); // null 表示成功
+                    } else {
+                        future.complete("HTTP " + response.code());
+                    }
+                }
+            } catch (Exception e) {
+                future.complete(e.getMessage());
             }
-        } catch (Exception e) {
-            return false;
-        }
+        }, "TTS-Test").start();
+
+        return future;
     }
 
     /**
-     * 转义 JSON 字符串
+     * 检查是否正在播放
+     */
+    public boolean isPlaying() {
+        return playing;
+    }
+
+    /**
+     * JSON 字符串转义
      */
     private String escapeJson(String s) {
         if (s == null) return "";
@@ -192,10 +198,11 @@ public class EdgeTTSService {
     }
 
     /**
-     * 关闭服务，释放资源
+     * 关闭服务
      */
     public void shutdown() {
-        stopCurrentAudio();
-        audioExecutor.shutdown();
+        stop();
+        httpClient.dispatcher().executorService().shutdown();
+        httpClient.connectionPool().evictAll();
     }
 }

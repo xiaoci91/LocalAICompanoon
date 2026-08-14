@@ -125,8 +125,8 @@ public class AICompanionEntity extends AnimalEntity {
 
         initialized = true;
 
-        // 设置主动对话初始延迟（30-60秒后开始第一次主动说话）
-        nextChatDelay = 600 + this.random.nextInt(600);
+        // 设置主动对话初始延迟（15-30秒后开始第一次主动说话）
+        nextChatDelay = 300 + this.random.nextInt(300);
         chatTimer = 0;
 
         // 设置出生点为玩家位置
@@ -196,8 +196,8 @@ public class AICompanionEntity extends AnimalEntity {
             double targetZ = this.getZ() + Math.sin(angle) * distance;
             double targetY = this.getY();
 
-            // 设置移动目标
-            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 0.25);
+            // 设置移动目标（速度接近玩家正常行走速度）
+            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 0.4);
         } catch (Exception e) {
             // 忽略游荡错误
         }
@@ -214,30 +214,127 @@ public class AICompanionEntity extends AnimalEntity {
             // 只有主人生存/冒险模式才主动说话
             if (owner.isCreative() || owner.isSpectator()) return;
 
-            // 调用LLM生成主动对话
-            String userMessage = "现在请你主动和我说一句话，挑起一个话题。可以评论周围的环境、问我在做什么、分享你的想法、或者提醒我注意什么。只用说一句话，不要太长，要自然。";
+            // 收集环境信息
+            String timeOfDay = getTimeOfDay();
+            String weather = getWeather();
+            String playerStatus = getPlayerStatus(owner);
+            String surroundings = getSurroundingsInfo();
+
+            // 构建上下文
+            String context = "当前游戏状态：\n" +
+                "- 时间：" + timeOfDay + "\n" +
+                "- 天气：" + weather + "\n" +
+                "- 玩家状态：" + playerStatus + "\n" +
+                "- 周围环境：" + surroundings + "\n";
+
+            // 构建prompt，让AI根据环境主动说话
+            String userMessage = "你是小艾，玩家的AI生存同伴。现在请你根据当前的游戏环境，主动和玩家说一句话。" +
+                "你可以：评论周围的环境、问玩家在做什么、提醒玩家注意危险、分享你的想法、或者建议玩家做什么。" +
+                "只用说一句话，不要太长，要自然，像真人一样。不要用列表格式，直接说内容。";
 
             LocalAICompanion.getInstance().getLLMClient().sendChatRequest(
                 userMessage,
-                "",
+                context,
                 new com.localaicompanion.llm.LLMClient.LLMCallback() {
                     @Override
                     public void onSuccess(com.localaicompanion.llm.LLMResponse response) {
                         String message = response.getContent().trim();
+                        // 去掉可能的引号
+                        message = message.replaceAll("^[\"']|[\"']$", "");
                         if (!message.isEmpty()) {
                             sendChatMessage(owner, message);
+                        } else {
+                            // LLM返回空，用预设句子
+                            sendFallbackChat(owner);
                         }
                     }
 
                     @Override
                     public void onError(String errorMessage) {
-                        // 主动对话失败就忽略，不打扰玩家
+                        // LLM调用失败，用预设句子
+                        sendFallbackChat(owner);
                     }
                 }
             );
         } catch (Exception e) {
-            // 忽略主动对话错误
+            // 出错了也用预设句子
+            sendFallbackChat(getOwnerPlayer());
         }
+    }
+
+    /**
+     * 预设的主动对话句子（fallback）
+     */
+    private void sendFallbackChat(PlayerEntity owner) {
+        if (owner == null) return;
+
+        String[] fallbackMessages = {
+            "嘿，你在干嘛呢？",
+            "今天天气真不错啊。",
+            "小心点，周围可能有怪物。",
+            "我们接下来要做什么？",
+            "我有点无聊了，找点事做吧。",
+            "你饿不饿？要不要找点吃的？",
+            "天快黑了，我们找个地方过夜吧。",
+            "这里的风景还挺好的。",
+            "需要我帮忙吗？",
+            "我们去探索一下吧？"
+        };
+
+        String message = fallbackMessages[this.random.nextInt(fallbackMessages.length)];
+        sendChatMessage(owner, message);
+    }
+
+    /**
+     * 获取当前时间描述
+     */
+    private String getTimeOfDay() {
+        long time = getWorld().getTimeOfDay() % 24000;
+        if (time < 1000) return "黎明";
+        if (time < 6000) return "上午";
+        if (time < 11000) return "中午";
+        if (time < 13000) return "下午";
+        if (time < 18000) return "傍晚";
+        if (time < 22000) return "晚上";
+        return "深夜";
+    }
+
+    /**
+     * 获取天气描述
+     */
+    private String getWeather() {
+        if (getWorld().isThundering()) return "雷暴";
+        if (getWorld().isRaining()) return "下雨";
+        return "晴朗";
+    }
+
+    /**
+     * 获取玩家状态描述
+     */
+    private String getPlayerStatus(PlayerEntity player) {
+        float health = player.getHealth();
+        int hunger = player.getHungerManager().getFoodLevel();
+
+        String status = "";
+        if (health < 10) status += "生命值较低，";
+        else if (health < 15) status += "生命值一般，";
+        else status += "生命值健康，";
+
+        if (hunger < 10) status += "很饿";
+        else if (hunger < 18) status += "有点饿";
+        else status += "饱食度充足";
+
+        return status;
+    }
+
+    /**
+     * 获取周围环境简单描述
+     */
+    private String getSurroundingsInfo() {
+        // 简单判断：在地下还是地上
+        if (this.getY() < 50) return "在地下/洞穴中";
+        if (this.getY() > 100) return "在高处/山上";
+        return "在地面";
     }
 
     /**

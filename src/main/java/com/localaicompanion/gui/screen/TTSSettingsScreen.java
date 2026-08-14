@@ -11,21 +11,17 @@ import net.minecraft.util.Formatting;
 
 /**
  * TTS语音设置页面
- *
- * 包含：
- * - TTS开关
- * - 服务地址
- * - 语音选择
- * - 语速
  */
 public class TTSSettingsScreen extends Screen {
     private final Screen parent;
     private final MainConfig mainConfig;
 
     private ButtonWidget enableButton;
+    private ButtonWidget testButton;
     private TextFieldWidget serverUrlField;
     private TextFieldWidget voiceField;
     private TextFieldWidget speedField;
+    private TextWidget statusWidget;
 
     public TTSSettingsScreen(Screen parent, MainConfig mainConfig) {
         super(Text.literal("语音设置"));
@@ -37,8 +33,8 @@ public class TTSSettingsScreen extends Screen {
     protected void init() {
         int centerX = this.width / 2;
         int y = 30;
-        int fieldWidth = 200;
-        int labelWidth = 80;
+        int fieldWidth = 240;
+        int labelWidth = 70;
 
         // 标题
         TextWidget title = new TextWidget(
@@ -119,24 +115,25 @@ public class TTSSettingsScreen extends Screen {
         speedField.setText(String.valueOf(mainConfig.ttsSpeed));
         speedField.setMaxLength(10);
         this.addDrawableChild(speedField);
-        y += 35;
+        y += 30;
 
-        // 提示
-        TextWidget tip = new TextWidget(
-            centerX - fieldWidth / 2, y, fieldWidth, 30,
-            Text.literal("需要先启动 Edge TTS 语音服务").formatted(Formatting.GRAY),
+        // 状态提示
+        statusWidget = new TextWidget(
+            centerX - fieldWidth / 2, y, fieldWidth, 20,
+            Text.literal(""),
             this.textRenderer
         );
-        this.addDrawableChild(tip);
-        y += 40;
+        this.addDrawableChild(statusWidget);
+        y += 25;
 
         // 测试按钮
-        this.addDrawableChild(ButtonWidget.builder(
+        testButton = ButtonWidget.builder(
             Text.literal("测试语音"),
             button -> testTTS()
-        ).dimensions(centerX - 105, y, 100, 20).build());
+        ).dimensions(centerX - 125, y, 120, 20).build();
+        this.addDrawableChild(testButton);
 
-        // 返回按钮
+        // 保存返回按钮
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("保存返回"),
             button -> {
@@ -145,7 +142,7 @@ public class TTSSettingsScreen extends Screen {
                     this.client.setScreen(parent);
                 }
             }
-        ).dimensions(centerX + 5, y, 100, 20).build());
+        ).dimensions(centerX + 5, y, 120, 20).build());
     }
 
     private void toggleTTS() {
@@ -155,11 +152,33 @@ public class TTSSettingsScreen extends Screen {
 
     private void testTTS() {
         saveConfig();
-        try {
-            LocalAICompanion.getInstance().getTtsService().speak("你好，我是小艾，这是语音测试。");
-        } catch (Exception e) {
-            // 忽略错误
-        }
+        testButton.setMessage(Text.literal("测试中..."));
+        testButton.active = false;
+        statusWidget.setMessage(Text.literal("正在测试连接...").formatted(Formatting.YELLOW));
+
+        // 先测试连接
+        LocalAICompanion.getInstance().getTtsService().testConnection().thenAccept(error -> {
+            if (error == null) {
+                // 连接成功，播放测试语音
+                LocalAICompanion.getInstance().getTtsService().speak("你好，我是小艾，这是语音测试。");
+                if (this.client != null) {
+                    this.client.execute(() -> {
+                        statusWidget.setMessage(Text.literal("§a测试成功！正在播放语音").formatted(Formatting.GREEN));
+                        testButton.setMessage(Text.literal("测试语音"));
+                        testButton.active = true;
+                    });
+                }
+            } else {
+                // 连接失败
+                if (this.client != null) {
+                    this.client.execute(() -> {
+                        statusWidget.setMessage(Text.literal("§c连接失败: " + error).formatted(Formatting.RED));
+                        testButton.setMessage(Text.literal("测试语音"));
+                        testButton.active = true;
+                    });
+                }
+            }
+        });
     }
 
     private void saveConfig() {

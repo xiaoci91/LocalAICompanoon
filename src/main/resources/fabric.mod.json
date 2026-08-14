@@ -3,7 +3,7 @@
   "id": "localaicompanion",
   "version": "${version}",
   "name": "Local AI Companion",
-  "description": "本地离线大模型驱动的AI生存同伴模组，支持Ollama/LM-Studio等本地LLM服务。完全离线运行，保护存档安全。",
+  "description": "本地AI同伴模组，可以对接Ollama、LM-Studio本地大模型，在游戏内生成AI NPC进行对话交互。需要自行部署本地大模型服务，本模组不会内置任何大模型",
   "authors": [
     "xiaoci"
   ],

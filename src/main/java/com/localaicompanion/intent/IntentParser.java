@@ -255,6 +255,27 @@ public class IntentParser {
             return ParseResult.task(task);
         }
 
+        // 查看背包
+        if (lower.contains("你有什么") || lower.contains("背包") || lower.contains("你身上有啥") ||
+            lower.contains("inventory") || lower.contains("backpack")) {
+            StandardTask task = new StandardTask(IntentType.INVENTORY, null, 0, "让我看看背包...");
+            return ParseResult.task(task);
+        }
+
+        // 查看状态/血量
+        if (lower.contains("你怎么样") || lower.contains("你还好吗") || lower.contains("血量") ||
+            lower.contains("status") || lower.contains("health")) {
+            StandardTask task = new StandardTask(IntentType.STATUS, null, 0, "我看看...");
+            return ParseResult.task(task);
+        }
+
+        // 攻击怪物/打怪
+        if (lower.contains("打怪物") || lower.contains("打怪") || lower.contains("攻击") ||
+            lower.contains("attack") || lower.contains("fight")) {
+            StandardTask task = new StandardTask(IntentType.ATTACK_MOB, null, 0, "好的，我去打怪物！");
+            return ParseResult.task(task);
+        }
+
         return ParseResult.chat(text);
     }
 

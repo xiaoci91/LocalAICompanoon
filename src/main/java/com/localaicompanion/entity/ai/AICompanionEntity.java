@@ -2,7 +2,7 @@ package com.localaicompanion.entity.ai;
 
 import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.task.TaskScheduler;
-import com.localaicompanion.task.pathing.BaritonePathingAdapter;
+import com.localaicompanion.task.pathing.EntityNavigationPathingService;
 import com.localaicompanion.task.pathing.PathingService;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
@@ -114,8 +114,8 @@ public class AICompanionEntity extends AnimalEntity {
         this.setCustomName(Text.literal(getCompanionName()));
         this.setCustomNameVisible(true);
 
-        // 初始化寻路服务
-        this.pathingService = new BaritonePathingAdapter();
+        // 初始化寻路服务（使用实体自带的导航系统）
+        this.pathingService = new EntityNavigationPathingService();
         this.pathingService.initialize(this);
 
         // 初始化任务调度器
@@ -144,6 +144,11 @@ public class AICompanionEntity extends AnimalEntity {
 
         // 更新状态显示
         updateStateDisplay();
+
+        // 更新寻路服务
+        if (pathingService instanceof EntityNavigationPathingService) {
+            ((EntityNavigationPathingService) pathingService).tick();
+        }
 
         // 主动对话计时器
         chatTimer++;

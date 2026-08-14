@@ -71,6 +71,13 @@ public class AICompanionEntity extends AnimalEntity {
     // NPC是否已初始化
     private boolean initialized = false;
 
+    // 主动对话计时器
+    private int nextChatDelay = 0;
+    private int chatTimer = 0;
+
+    // 游荡相关
+    private int wanderTimer = 0;
+
     public AICompanionEntity(EntityType<? extends AnimalEntity> entityType, World world) {
         super(entityType, world);
     }
@@ -118,6 +125,10 @@ public class AICompanionEntity extends AnimalEntity {
 
         initialized = true;
 
+        // 设置主动对话初始延迟（30-60秒后开始第一次主动说话）
+        nextChatDelay = 600 + this.random.nextInt(600);
+        chatTimer = 0;
+
         // 设置出生点为玩家位置
         this.refreshPositionAndAngles(owner.getX(), owner.getY(), owner.getZ(), owner.getYaw(), owner.getPitch());
         LocalAICompanion.LOGGER.info("[AICompanion] AI同伴已召唤: 主人={}", ownerName);
@@ -133,6 +144,118 @@ public class AICompanionEntity extends AnimalEntity {
 
         // 更新状态显示
         updateStateDisplay();
+
+        // 主动对话计时器
+        chatTimer++;
+        if (chatTimer >= nextChatDelay && nextChatDelay > 0) {
+            triggerProactiveChat();
+            chatTimer = 0;
+            // 随机设置下一次说话的间隔（60-120秒，即1200-2400 tick）
+            nextChatDelay = 1200 + this.random.nextInt(1200);
+        }
+
+        // 游荡计时器（简单实现：偶尔随机走动）
+        wanderTimer++;
+        if (wanderTimer >= 100 && isIdle()) {
+            tryWander();
+            wanderTimer = 0;
+        }
+    }
+
+    /**
+     * 检查是否处于空闲状态
+     */
+    private boolean isIdle() {
+        if (taskScheduler != null) {
+            var currentTask = taskScheduler.getCurrentTask();
+            if (currentTask != null && currentTask.getState().isActive()) {
+                return false;
+            }
+        }
+        if (pathingService != null && pathingService.isActive()) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 简单游荡：随机朝一个方向走几步
+     */
+    private void tryWander() {
+        try {
+            PlayerEntity owner = getOwnerPlayer();
+            if (owner == null) return;
+
+            // 离主人太近就不走了
+            if (this.squaredDistanceTo(owner) < 4.0) return;
+
+            // 随机生成一个目标点
+            double angle = this.random.nextDouble() * Math.PI * 2;
+            double distance = 2 + this.random.nextDouble() * 3;
+            double targetX = this.getX() + Math.cos(angle) * distance;
+            double targetZ = this.getZ() + Math.sin(angle) * distance;
+            double targetY = this.getY();
+
+            // 设置移动目标
+            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 0.25);
+        } catch (Exception e) {
+            // 忽略游荡错误
+        }
+    }
+
+    /**
+     * 触发主动对话
+     */
+    private void triggerProactiveChat() {
+        try {
+            PlayerEntity owner = getOwnerPlayer();
+            if (owner == null) return;
+
+            // 只有主人生存/冒险模式才主动说话
+            if (owner.isCreative() || owner.isSpectator()) return;
+
+            // 调用LLM生成主动对话
+            String userMessage = "现在请你主动和我说一句话，挑起一个话题。可以评论周围的环境、问我在做什么、分享你的想法、或者提醒我注意什么。只用说一句话，不要太长，要自然。";
+
+            LocalAICompanion.getInstance().getLLMClient().sendChatRequest(
+                userMessage,
+                "",
+                new com.localaicompanion.llm.LLMClient.LLMCallback() {
+                    @Override
+                    public void onSuccess(com.localaicompanion.llm.LLMResponse response) {
+                        String message = response.getContent().trim();
+                        if (!message.isEmpty()) {
+                            sendChatMessage(owner, message);
+                        }
+                    }
+
+                    @Override
+                    public void onError(String errorMessage) {
+                        // 主动对话失败就忽略，不打扰玩家
+                    }
+                }
+            );
+        } catch (Exception e) {
+            // 忽略主动对话错误
+        }
+    }
+
+    /**
+     * 发送聊天消息给主人
+     */
+    private void sendChatMessage(PlayerEntity player, String message) {
+        if (player == null || message == null) return;
+
+        String npcName = getCompanionName();
+        Text text = Text.literal("[" + npcName + "] ").append(message);
+        player.sendMessage(text, false);
+
+        // TTS语音播放
+        try {
+            LocalAICompanion.getInstance().getTtsService().speak(message);
+        } catch (Exception e) {
+            // 忽略TTS错误
+        }
     }
 
     /**

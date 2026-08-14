@@ -1,5 +1,6 @@
 package com.localaicompanion.gui.screen;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.PermissionConfig;
 import com.localaicompanion.security.SecuritySandbox;
 import net.minecraft.client.gui.screen.Screen;
@@ -65,19 +66,19 @@ public class SecurityScreen extends Screen {
         // 破坏方块
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许破坏方块", permissionConfig.allowBreakBlocks,
-            btn -> { permissionConfig.allowBreakBlocks = !permissionConfig.allowBreakBlocks; clearAndInit(); });
+            btn -> { permissionConfig.allowBreakBlocks = !permissionConfig.allowBreakBlocks; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 放置方块
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许放置方块", permissionConfig.allowPlaceBlocks,
-            btn -> { permissionConfig.allowPlaceBlocks = !permissionConfig.allowPlaceBlocks; clearAndInit(); });
+            btn -> { permissionConfig.allowPlaceBlocks = !permissionConfig.allowPlaceBlocks; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 采集矿石
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许采集矿石", permissionConfig.allowMiningOres,
-            btn -> { permissionConfig.allowMiningOres = !permissionConfig.allowMiningOres; clearAndInit(); });
+            btn -> { permissionConfig.allowMiningOres = !permissionConfig.allowMiningOres; saveConfig(); clearAndInit(); });
         y += 25;
 
         // ===== 物品权限 =====
@@ -92,13 +93,13 @@ public class SecurityScreen extends Screen {
         // 开启箱子
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许开启箱子/容器", permissionConfig.allowOpenContainers,
-            btn -> { permissionConfig.allowOpenContainers = !permissionConfig.allowOpenContainers; clearAndInit(); });
+            btn -> { permissionConfig.allowOpenContainers = !permissionConfig.allowOpenContainers; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 拾取物品
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许拾取物品", permissionConfig.allowPickupItems,
-            btn -> { permissionConfig.allowPickupItems = !permissionConfig.allowPickupItems; clearAndInit(); });
+            btn -> { permissionConfig.allowPickupItems = !permissionConfig.allowPickupItems; saveConfig(); clearAndInit(); });
         y += 25;
 
         // ===== 战斗权限 =====
@@ -113,13 +114,13 @@ public class SecurityScreen extends Screen {
         // 攻击怪物
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许攻击怪物", permissionConfig.allowAttackMobs,
-            btn -> { permissionConfig.allowAttackMobs = !permissionConfig.allowAttackMobs; clearAndInit(); });
+            btn -> { permissionConfig.allowAttackMobs = !permissionConfig.allowAttackMobs; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 攻击动物
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "允许攻击动物", permissionConfig.allowAttackAnimals,
-            btn -> { permissionConfig.allowAttackAnimals = !permissionConfig.allowAttackAnimals; clearAndInit(); });
+            btn -> { permissionConfig.allowAttackAnimals = !permissionConfig.allowAttackAnimals; saveConfig(); clearAndInit(); });
         y += 25;
 
         // ===== 危险环境检测 =====
@@ -134,19 +135,19 @@ public class SecurityScreen extends Screen {
         // 岩浆检测
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "岩浆紧急撤离", permissionConfig.emergencyOnLava,
-            btn -> { permissionConfig.emergencyOnLava = !permissionConfig.emergencyOnLava; clearAndInit(); });
+            btn -> { permissionConfig.emergencyOnLava = !permissionConfig.emergencyOnLava; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 火焰检测
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "火焰紧急撤离", permissionConfig.emergencyOnFire,
-            btn -> { permissionConfig.emergencyOnFire = !permissionConfig.emergencyOnFire; clearAndInit(); });
+            btn -> { permissionConfig.emergencyOnFire = !permissionConfig.emergencyOnFire; saveConfig(); clearAndInit(); });
         y += 22;
 
         // 虚空检测
         addToggleButton(centerX - listWidth / 2, y, listWidth,
             "虚空紧急撤离", permissionConfig.emergencyOnVoid,
-            btn -> { permissionConfig.emergencyOnVoid = !permissionConfig.emergencyOnVoid; clearAndInit(); });
+            btn -> { permissionConfig.emergencyOnVoid = !permissionConfig.emergencyOnVoid; saveConfig(); clearAndInit(); });
         y += 30;
 
         // 方块黑名单编辑按钮
@@ -178,6 +179,17 @@ public class SecurityScreen extends Screen {
 
     private void openSafeZoneScreen() {
         // 打开安全区域管理界面
+    }
+
+    /**
+     * 保存配置到文件
+     */
+    private void saveConfig() {
+        try {
+            LocalAICompanion.getInstance().getConfigManager().saveAll();
+        } catch (Exception e) {
+            // 忽略保存错误
+        }
     }
 
     @Override

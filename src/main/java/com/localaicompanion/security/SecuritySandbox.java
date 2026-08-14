@@ -1,5 +1,6 @@
 package com.localaicompanion.security;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.PermissionConfig;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
@@ -26,9 +27,6 @@ public class SecuritySandbox {
     // 安全区域列表
     private List<SafeZone> safeZones;
 
-    // 方块黑名单（从配置加载）
-    private PermissionConfig permissionConfig;
-
     // 危险环境检测开关
     private boolean dangerDetectionEnabled = true;
 
@@ -37,10 +35,16 @@ public class SecuritySandbox {
     }
 
     /**
+     * 动态获取最新的权限配置（避免配置重载后引用失效）
+     */
+    private PermissionConfig getPermissionConfig() {
+        return LocalAICompanion.getInstance().getConfigManager().getPermissionConfig();
+    }
+
+    /**
      * 从配置加载
      */
     public void loadFromConfig(PermissionConfig config) {
-        this.permissionConfig = config;
         LOGGER.info("[Security] 安全沙箱已加载");
     }
 
@@ -69,7 +73,7 @@ public class SecuritySandbox {
      * 检查指定位置是否可以破坏方块
      */
     public boolean canBreakAt(BlockPos pos) {
-        if (!permissionConfig.enableSafeZones) return true;
+        if (!getPermissionConfig().enableSafeZones) return true;
 
         for (SafeZone zone : safeZones) {
             if (zone.contains(pos)) {
@@ -83,7 +87,7 @@ public class SecuritySandbox {
      * 检查指定位置是否可以放置方块
      */
     public boolean canPlaceAt(BlockPos pos) {
-        if (!permissionConfig.enableSafeZones) return true;
+        if (!getPermissionConfig().enableSafeZones) return true;
 
         for (SafeZone zone : safeZones) {
             if (zone.contains(pos)) {
@@ -97,7 +101,7 @@ public class SecuritySandbox {
      * 检查方块是否在黑名单中
      */
     public boolean isBlockBlacklisted(String blockId) {
-        return permissionConfig.isBlockBlacklisted(blockId);
+        return getPermissionConfig().isBlockBlacklisted(blockId);
     }
 
     /**
@@ -132,20 +136,21 @@ public class SecuritySandbox {
      */
     public DangerType detectDanger(BlockPos pos, boolean isInLava, boolean isOnFire, double y) {
         if (!dangerDetectionEnabled) return null;
+        PermissionConfig config = getPermissionConfig();
 
-        if (permissionConfig.emergencyOnLava && isInLava) {
+        if (config.emergencyOnLava && isInLava) {
             return DangerType.LAVA;
         }
 
-        if (permissionConfig.emergencyOnFire && isOnFire) {
+        if (config.emergencyOnFire && isOnFire) {
             return DangerType.FIRE;
         }
 
-        if (permissionConfig.emergencyOnVoid && y < -64) {
+        if (config.emergencyOnVoid && y < -64) {
             return DangerType.VOID;
         }
 
-        if (permissionConfig.emergencyOnHighFall && y < -10) {
+        if (config.emergencyOnHighFall && y < -10) {
             // 高处掉落风险检测
             // 简化实现
         }

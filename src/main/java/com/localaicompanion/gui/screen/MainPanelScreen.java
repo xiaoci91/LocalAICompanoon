@@ -154,6 +154,28 @@ public class MainPanelScreen extends Screen {
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
 
+        // 外观设置（皮肤等）
+        this.addDrawableChild(ButtonWidget.builder(
+            Text.literal("外观设置"),
+            button -> {
+                if (this.client != null) {
+                    this.client.setScreen(new SkinSettingsScreen(this, mainConfig));
+                }
+            }
+        ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
+        y += 25;
+
+        // 语音设置
+        this.addDrawableChild(ButtonWidget.builder(
+            Text.literal("语音设置"),
+            button -> {
+                if (this.client != null) {
+                    this.client.setScreen(new TTSSettingsScreen(this, mainConfig));
+                }
+            }
+        ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
+        y += 25;
+
         // 其他设置（暂时打开LLM设置，后续可扩展）
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("其他设置"),

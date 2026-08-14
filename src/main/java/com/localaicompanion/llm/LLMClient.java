@@ -1,5 +1,6 @@
 package com.localaicompanion.llm;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.LLMConfig;
 import okhttp3.*;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -37,9 +38,13 @@ public class LLMClient {
     private final ExecutorService requestExecutor;
     private final ScheduledExecutorService retryScheduler;
 
-    private final LLMConfig config;
     private final RateLimiter chatRateLimiter;
     private final RateLimiter taskRateLimiter;
+
+    // 从ConfigManager动态获取最新配置，避免服务器重载配置后引用失效
+    private LLMConfig getConfig() {
+        return LocalAICompanion.getInstance().getConfigManager().getLLMConfig();
+    }
 
     // 当前活跃请求数（始终<=1）
     private final AtomicInteger activeRequests = new AtomicInteger(0);
@@ -56,7 +61,6 @@ public class LLMClient {
     };
 
     public LLMClient(LLMConfig config) {
-        this.config = config;
         this.objectMapper = new ObjectMapper();
 
         // 配置HTTP客户端
@@ -103,7 +107,7 @@ public class LLMClient {
             return;
         }
 
-        if (activeRequests.get() >= config.maxConcurrentRequests) {
+        if (activeRequests.get() >= getConfig().maxConcurrentRequests) {
             callback.onError("已有请求正在处理中，请稍候");
             return;
         }
@@ -126,7 +130,7 @@ public class LLMClient {
             return;
         }
 
-        if (activeRequests.get() >= config.maxConcurrentRequests) {
+        if (activeRequests.get() >= getConfig().maxConcurrentRequests) {
             callback.onError("已有请求正在处理中，请稍候");
             return;
         }
@@ -163,6 +167,7 @@ public class LLMClient {
      * 执行请求（带重试）
      */
     private LLMResponse executeRequestWithRetry(String userMessage, String context, RequestType type) {
+        LLMConfig config = getConfig();
         int retryCount = 0;
         LLMResponse lastResponse = null;
 
@@ -214,6 +219,7 @@ public class LLMClient {
      * 执行单次HTTP请求
      */
     private LLMResponse executeRequest(String userMessage, String context, RequestType type) throws IOException {
+        LLMConfig config = getConfig();
         String url = config.getFullApiUrl();
         String requestBody = buildRequestBody(userMessage, context, type);
 
@@ -245,6 +251,7 @@ public class LLMClient {
      */
     private String buildRequestBody(String userMessage, String context, RequestType type) {
         try {
+            LLMConfig config = getConfig();
             ObjectNode root = objectMapper.createObjectNode();
             LLMConfig.ApiType apiType = config.getApiTypeEnum();
 
@@ -312,6 +319,7 @@ public class LLMClient {
      * 构建prompt（用于非chat格式的API）
      */
     private String buildPrompt(String userMessage, String context, RequestType type) {
+        LLMConfig config = getConfig();
         StringBuilder sb = new StringBuilder();
 
         // 系统提示词
@@ -336,6 +344,7 @@ public class LLMClient {
      */
     private LLMResponse parseResponse(String responseBody, RequestType type) {
         try {
+            LLMConfig config = getConfig();
             JsonNode root = objectMapper.readTree(responseBody);
             String content = "";
             LLMConfig.ApiType apiType = config.getApiTypeEnum();
@@ -415,12 +424,14 @@ public class LLMClient {
 
     /**
      * 测试连接（真测试：发一个最小的生成请求，验证服务+模型都可用）
+     * @return CompletableFuture<String> - null表示成功，非null表示错误信息
      */
-    public CompletableFuture<Boolean> testConnection() {
-        CompletableFuture<Boolean> future = new CompletableFuture<>();
+    public CompletableFuture<String> testConnection() {
+        CompletableFuture<String> future = new CompletableFuture<>();
 
         requestExecutor.submit(() -> {
             try {
+                LLMConfig config = getConfig();
                 String url = config.getFullApiUrl();
 
                 // 构建一个最小的测试请求（max_tokens=1，只测能不能通）
@@ -459,11 +470,16 @@ public class LLMClient {
                 try (Response response = httpClient.newCall(request).execute()) {
                     boolean success = response.isSuccessful();
                     isConnected.set(success);
-                    future.complete(success);
+                    if (success) {
+                        future.complete(null);
+                    } else {
+                        String body = response.body() != null ? response.body().string() : "";
+                        future.complete("HTTP " + response.code() + ": " + body);
+                    }
                 }
             } catch (Exception e) {
                 isConnected.set(false);
-                future.complete(false);
+                future.complete(e.getClass().getSimpleName() + ": " + e.getMessage());
             }
         });
 

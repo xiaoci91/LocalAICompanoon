@@ -1,5 +1,6 @@
 package com.localaicompanion.intent;
 
+import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.MainConfig;
 import com.localaicompanion.config.PermissionConfig;
 import com.localaicompanion.llm.LLMClient;
@@ -188,6 +189,13 @@ public class IntentSecurityLayer {
         String npcName = "小艾"; // 从配置获取
         Text text = Text.literal("[" + npcName + "] ").append(message);
         player.sendMessage(text, false);
+
+        // TTS语音播放
+        try {
+            LocalAICompanion.getInstance().getTtsService().speak(message);
+        } catch (Exception e) {
+            // 忽略TTS错误
+        }
     }
 
     /**

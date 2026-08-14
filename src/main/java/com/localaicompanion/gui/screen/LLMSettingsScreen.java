@@ -37,6 +37,7 @@ public class LLMSettingsScreen extends Screen {
 
     // API类型相关
     private String selectedApiType;
+    private ButtonWidget apiTypeButton;
     private static final String[] API_TYPES = {"OLLAMA", "OPENAI_COMPATIBLE", "LM_STUDIO", "LLAMA_CPP"};
 
     public LLMSettingsScreen(Screen parent, LLMConfig config, HardwarePresetConfig presetConfig) {
@@ -47,6 +48,30 @@ public class LLMSettingsScreen extends Screen {
         this.selectedPreset = config.currentPreset;
         this.presetNames = presetConfig.getPresetNames();
         this.selectedApiType = config.apiType;
+
+        // 确保apiEndpoint和apiType匹配（兼容旧配置）
+        syncEndpointWithType();
+    }
+
+    private void syncEndpointWithType() {
+        switch (selectedApiType) {
+            case "OLLAMA":
+                if (!"/api/generate".equals(config.apiEndpoint)) {
+                    config.apiEndpoint = "/api/generate";
+                }
+                break;
+            case "OPENAI_COMPATIBLE":
+            case "LM_STUDIO":
+                if (!"/chat/completions".equals(config.apiEndpoint) && !"/v1/chat/completions".equals(config.apiEndpoint)) {
+                    config.apiEndpoint = "/chat/completions";
+                }
+                break;
+            case "LLAMA_CPP":
+                if (!"/completion".equals(config.apiEndpoint)) {
+                    config.apiEndpoint = "/completion";
+                }
+                break;
+        }
     }
 
     @Override
@@ -106,7 +131,7 @@ public class LLMSettingsScreen extends Screen {
         );
         this.addDrawableChild(apiTypeLabel);
 
-        ButtonWidget apiTypeButton = ButtonWidget.builder(
+        apiTypeButton = ButtonWidget.builder(
             Text.literal(selectedApiType),
             button -> cycleApiType()
         ).dimensions(centerX - fieldWidth / 2 + labelWidth + 5, y, fieldWidth - labelWidth - 5, 20).build();
@@ -270,10 +295,9 @@ public class LLMSettingsScreen extends Screen {
                 break;
         }
 
-        // 更新地址输入框显示
+        // 直接更新UI，不重建整个界面（保留用户输入的其他内容）
         apiUrlField.setText(config.apiBaseUrl);
-
-        this.clearAndInit();
+        apiTypeButton.setMessage(Text.literal(selectedApiType));
     }
 
     private void testConnection() {
@@ -302,12 +326,21 @@ public class LLMSettingsScreen extends Screen {
             this.client.player.sendMessage(Text.literal("正在测试连接..."), true);
         }
 
-        LocalAICompanion.getInstance().getLLMClient().testConnection().thenAccept(success -> {
+        String testUrl = config.getFullApiUrl();
+        String testType = selectedApiType;
+
+        LocalAICompanion.getInstance().getLLMClient().testConnection().thenAccept(error -> {
             if (this.client != null && this.client.player != null) {
-                if (success) {
+                if (error == null) {
                     this.client.player.sendMessage(Text.literal("✓ 连接成功！").formatted(Formatting.GREEN), true);
                 } else {
-                    this.client.player.sendMessage(Text.literal("✗ 连接失败，请检查API地址和模型服务是否启动").formatted(Formatting.RED), true);
+                    this.client.player.sendMessage(
+                        Text.literal("✗ 连接失败").formatted(Formatting.RED)
+                            .append(Text.literal("\n类型: " + testType).formatted(Formatting.GRAY))
+                            .append(Text.literal("\nURL: " + testUrl).formatted(Formatting.GRAY))
+                            .append(Text.literal("\n错误: " + error).formatted(Formatting.YELLOW)),
+                        false
+                    );
                 }
             }
         });

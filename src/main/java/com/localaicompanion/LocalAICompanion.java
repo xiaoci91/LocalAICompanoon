@@ -11,6 +11,7 @@ import com.localaicompanion.memory.MemoryManager;
 import com.localaicompanion.security.SecuritySandbox;
 import com.localaicompanion.task.TaskScheduler;
 import com.localaicompanion.llm.LLMServiceDetector;
+import com.localaicompanion.tts.EdgeTTSService;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -44,6 +45,7 @@ public class LocalAICompanion implements ModInitializer {
     private LLMServiceDetector serviceDetector;
     private LLMClient llmClient;
     private IntentSecurityLayer intentSecurityLayer;
+    private EdgeTTSService ttsService;
 
     @Override
     public void onInitialize() {
@@ -79,6 +81,9 @@ public class LocalAICompanion implements ModInitializer {
 
         // 第7步：初始化LLM服务探测器
         this.serviceDetector = new LLMServiceDetector();
+
+        // 第7.5步：初始化TTS语音服务
+        this.ttsService = new EdgeTTSService();
 
         // 第8步：注册实体
         AICompanionEntities.registerAll();
@@ -179,5 +184,9 @@ public class LocalAICompanion implements ModInitializer {
 
     public LLMServiceDetector getServiceDetector() {
         return serviceDetector;
+    }
+
+    public EdgeTTSService getTtsService() {
+        return ttsService;
     }
 }

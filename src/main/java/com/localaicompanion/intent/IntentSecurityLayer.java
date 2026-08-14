@@ -1,66 +1,38 @@
 package com.localaicompanion.intent;
 
 import com.localaicompanion.LocalAICompanion;
-import com.localaicompanion.config.MainConfig;
-import com.localaicompanion.config.PermissionConfig;
 import com.localaicompanion.llm.LLMClient;
 import com.localaicompanion.llm.LLMResponse;
 import com.localaicompanion.memory.MemoryManager;
-import com.localaicompanion.security.SecuritySandbox;
-import com.localaicompanion.task.TaskScheduler;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 第2层：意图解析安全校验层（项目核心）
+ * 意图安全层 - 简化版
  *
- * 这是大模型和游戏世界之间的核心隔离层
- * 所有大模型输出必须经过这里才能转化为游戏操作
- *
- * 职责：
- * 1. 接收LLM返回内容
- * 2. 文本解析、格式校验
- * 3. 权限判断、意图标准化
- * 4. 生成标准任务对象交给下层
- *
- * 核心原则：
- * - 大模型只可以输出"意图建议"，没有直接执行游戏操作的权力
- * - 所有改变世界的行为，必须经过校验层审核通过才允许执行
- * - 解析失败直接丢弃操作请求，只回复聊天
+ * 只处理聊天对话，不处理任务
+ * 所有大模型输出都作为聊天消息显示
  */
 public class IntentSecurityLayer {
     private static final Logger LOGGER = LoggerFactory.getLogger("LocalAICompanion-SecurityLayer");
 
-    private final IntentParser parser;
-    private final IntentValidator validator;
     private final LLMClient llmClient;
     private final MemoryManager memoryManager;
-    private final TaskScheduler taskScheduler;
 
-    // 解析失败计数（用于提示玩家）
-    private int consecutiveParseFailures = 0;
-    private static final int MAX_PARSE_FAILURES = 3;
-
-    public IntentSecurityLayer(PermissionConfig permissionConfig, MainConfig mainConfig,
-                               SecuritySandbox securitySandbox, LLMClient llmClient,
-                               MemoryManager memoryManager, TaskScheduler taskScheduler) {
-        this.parser = new IntentParser();
-        this.validator = new IntentValidator(permissionConfig, mainConfig, securitySandbox);
+    public IntentSecurityLayer(LLMClient llmClient, MemoryManager memoryManager) {
         this.llmClient = llmClient;
         this.memoryManager = memoryManager;
-        this.taskScheduler = taskScheduler;
     }
 
     /**
      * 处理玩家消息（入口方法）
-     * 异步调用LLM，解析结果，校验权限，提交任务
+     * 异步调用LLM，返回聊天回复
      *
      * @param player 玩家
      * @param message 玩家消息
-     * @param isTaskRequest 是否为任务请求（影响限流策略）
+     * @param isTaskRequest 是否为任务请求（保留参数但忽略）
      */
     public void processPlayerMessage(ServerPlayerEntity player, String message, boolean isTaskRequest) {
         // 1. 构建上下文（短期记忆 + 相关长期记忆）
@@ -75,157 +47,62 @@ public class IntentSecurityLayer {
 
             @Override
             public void onError(String errorMessage) {
-                handleLLMError(player, errorMessage, false);
+                handleLLMError(player, errorMessage);
             }
         };
 
-        if (isTaskRequest) {
-            llmClient.sendTaskRequest(message, context, callback);
-        } else {
-            llmClient.sendChatRequest(message, context, callback);
-        }
+        llmClient.sendChatRequest(message, context, callback);
 
         // 3. 记录到短期记忆
         memoryManager.addChatMessage("player", message);
     }
 
     /**
-     * 处理LLM响应
+     * 处理LLM响应 - 直接作为聊天消息显示
      */
     private void handleLLMResponse(ServerPlayerEntity player, String responseContent) {
-        // 1. 解析意图
-        IntentParser.ParseResult parseResult = parser.parse(responseContent);
-
-        if (!parseResult.isTask()) {
-            // 纯聊天，直接显示
-            consecutiveParseFailures = 0;
-            sendNPCMessage(player, parseResult.getChatMessage());
-            memoryManager.addChatMessage("npc", parseResult.getChatMessage());
-            return;
+        if (responseContent == null || responseContent.trim().isEmpty()) {
+            responseContent = "（空响应）";
         }
 
-        StandardTask task = parseResult.getTask();
-        task.setOriginalInput(responseContent);
+        // 直接显示聊天消息
+        sendNPCMessage(player, responseContent);
 
-        // 2. 安全校验
-        BlockPos targetPos = null; // 暂时传null，后续任务执行时再精确判断
-        IntentValidator.ValidationResult validation = validator.validate(task, player, targetPos);
-
-        if (!validation.isAllowed()) {
-            // 校验不通过，显示拒绝消息
-            LOGGER.warn("[SecurityLayer] 任务被拦截: {} - {}", task.getIntentType(), validation.getDenyReason());
-            sendNPCMessage(player, validation.getDenyMessage());
-            memoryManager.addChatMessage("npc", validation.getDenyMessage());
-
-            // 记录解析失败
-            consecutiveParseFailures++;
-            if (consecutiveParseFailures >= MAX_PARSE_FAILURES) {
-                sendSystemMessage(player, "提示：我有点理解不了你的指令，试试说简单一点？");
-                consecutiveParseFailures = 0;
-            }
-            return;
-        }
-
-        // 3. 校验通过，提交任务到调度器
-        consecutiveParseFailures = 0;
-
-        // 先显示NPC说话内容
-        if (task.getComment() != null && !task.getComment().isEmpty()) {
-            sendNPCMessage(player, task.getComment());
-            memoryManager.addChatMessage("npc", task.getComment());
-        }
-
-        // 提交任务
-        boolean submitted = taskScheduler.submitTask(task, player);
-        if (!submitted) {
-            sendSystemMessage(player, "任务队列已满，请稍后再试");
-        }
-
-        LOGGER.info("[SecurityLayer] 任务通过校验并提交: {}", task);
+        // 记录到记忆
+        memoryManager.addChatMessage("npc", responseContent);
     }
 
     /**
      * 处理LLM错误
      */
-    private void handleLLMError(ServerPlayerEntity player, String errorMessage, boolean isOOM) {
-        LOGGER.error("[SecurityLayer] LLM请求失败: {}", errorMessage);
+    private void handleLLMError(ServerPlayerEntity player, String errorMessage) {
+        String errorReply = "抱歉，我现在有点累，等会儿再聊吧~";
+        sendNPCMessage(player, errorReply);
+        memoryManager.addChatMessage("npc", errorReply);
 
-        if (isOOM) {
-            sendSystemMessage(player, "⚠ 显存不足！请切换到更小量化的模型（如q2_K），或降低上下文窗口大小。");
-        } else if (errorMessage.contains("连接") || errorMessage.contains("Connection") || errorMessage.contains("refused")) {
-            sendSystemMessage(player, "⚠ 无法连接到本地AI服务。请确认Ollama或LM Studio已启动。");
-        } else {
-            sendSystemMessage(player, "⚠ AI服务暂时不可用: " + errorMessage);
-        }
+        LOGGER.error("[SecurityLayer] LLM调用失败: {}", errorMessage);
     }
 
     /**
-     * 构建请求上下文
+     * 构建上下文
      */
-    private String buildContext(ServerPlayerEntity player, String currentMessage) {
+    private String buildContext(ServerPlayerEntity player, String message) {
         StringBuilder context = new StringBuilder();
 
-        // 短期对话记忆
-        String shortTerm = memoryManager.getShortTermContext();
-        if (shortTerm != null && !shortTerm.isEmpty()) {
-            context.append(shortTerm);
-        }
+        // 添加短期记忆
+        context.append(memoryManager.getShortTermContext());
 
-        // 相关长期记忆
-        String longTerm = memoryManager.getRelevantLongTermMemory(currentMessage);
-        if (longTerm != null && !longTerm.isEmpty()) {
-            context.append("\n【相关记忆】\n").append(longTerm);
-        }
+        // 添加长期记忆（相关的）
+        context.append(memoryManager.getRelevantLongTermMemory(message));
 
         return context.toString();
     }
 
     /**
-     * 发送NPC消息（游戏内聊天栏显示）
+     * 发送NPC聊天消息
      */
     private void sendNPCMessage(ServerPlayerEntity player, String message) {
-        if (player == null || message == null) return;
-
-        String npcName = "小艾"; // 从配置获取
-        Text text = Text.literal("[" + npcName + "] ").append(message);
+        Text text = Text.literal("§b[小艾] §r" + message);
         player.sendMessage(text, false);
-
-        // TTS语音播放
-        try {
-            LocalAICompanion.getInstance().getTtsService().speak(message);
-        } catch (Exception e) {
-            // 忽略TTS错误
-        }
-    }
-
-    /**
-     * 发送系统消息
-     */
-    private void sendSystemMessage(ServerPlayerEntity player, String message) {
-        if (player == null || message == null) return;
-
-        Text text = Text.literal("§7[系统] " + message);
-        player.sendMessage(text, false);
-    }
-
-    /**
-     * 直接提交系统任务（不经过LLM）
-     * 用于危险环境检测、超时处理等内部触发
-     */
-    public void submitSystemTask(StandardTask task, ServerPlayerEntity player) {
-        task.setSource(StandardTask.TaskSource.SYSTEM);
-        taskScheduler.submitTask(task, player);
-    }
-
-    public IntentParser getParser() {
-        return parser;
-    }
-
-    public IntentValidator getValidator() {
-        return validator;
-    }
-
-    public void setLocalServer(boolean localServer) {
-        validator.setLocalServer(localServer);
     }
 }

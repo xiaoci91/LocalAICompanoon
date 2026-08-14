@@ -5,7 +5,6 @@ import com.localaicompanion.entity.ai.AICompanionEntity;
 import com.localaicompanion.entity.ai.AICompanionEntities;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import net.minecraft.entity.Entity;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -143,6 +142,11 @@ public class CompanionCommand {
     private static int talkToCompanion(ServerCommandSource source, String message) {
         ServerPlayerEntity player = source.getPlayer();
         if (player == null) return 0;
+
+        // 先显示用户的消息，让用户看到自己说了什么
+        Text userMessage = Text.literal("§a[你] §r" + message);
+        player.sendMessage(userMessage, false);
+
         LocalAICompanion.getInstance().getIntentSecurityLayer()
             .processPlayerMessage(player, message, false);
         return 1;
@@ -153,15 +157,17 @@ public class CompanionCommand {
         if (player == null) return 0;
 
         var config = LocalAICompanion.getInstance().getConfigManager();
-        var scheduler = LocalAICompanion.getInstance().getTaskScheduler();
 
         source.sendFeedback(() -> Text.literal("===== AI同伴状态 ====="), false);
         source.sendFeedback(() -> Text.literal("运行模式: " + config.getMainConfig().runMode), false);
-        source.sendFeedback(() -> Text.literal("任务队列: " + scheduler.getQueueSize() + "个等待中"), false);
 
-        var current = scheduler.getCurrentTask();
-        if (current != null) {
-            source.sendFeedback(() -> Text.literal("当前任务: " + current.getStandardTask().getIntentType().getDisplayName()), false);
+        // 检查是否有同伴
+        AICompanionEntity companion = findCompanion(player);
+        if (companion != null) {
+            source.sendFeedback(() -> Text.literal("状态: 已召唤"), false);
+            source.sendFeedback(() -> Text.literal("名字: " + companion.getCompanionName()), false);
+        } else {
+            source.sendFeedback(() -> Text.literal("状态: 未召唤"), false);
         }
 
         return 1;

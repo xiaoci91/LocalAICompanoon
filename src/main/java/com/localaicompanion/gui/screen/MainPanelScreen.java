@@ -11,15 +11,12 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
 /**
- * 主状态面板
+ * 主状态面板 - 简化版
  *
  * 显示：
  * - LLM连接状态
  * - 当前运行模式
- * - NPC状态
- * - 硬件预设选择入口
- *
- * 首页醒目提示：本模组需要用户自行安装Ollama或者其他本地大模型服务
+ * - 各种设置入口
  */
 public class MainPanelScreen extends Screen {
     private final Screen parent;
@@ -117,17 +114,6 @@ public class MainPanelScreen extends Screen {
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
         y += 25;
 
-        // 任务管理
-        this.addDrawableChild(ButtonWidget.builder(
-            Text.literal("任务管理"),
-            button -> {
-                if (this.client != null) {
-                    this.client.setScreen(new TaskManagerScreen(this, LocalAICompanion.getInstance().getTaskScheduler()));
-                }
-            }
-        ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
-        y += 25;
-
         // 记忆管理
         this.addDrawableChild(ButtonWidget.builder(
             Text.literal("记忆管理"),
@@ -146,8 +132,7 @@ public class MainPanelScreen extends Screen {
                 if (this.client != null) {
                     this.client.setScreen(new SecurityScreen(
                         this,
-                        LocalAICompanion.getInstance().getConfigManager().getPermissionConfig(),
-                        LocalAICompanion.getInstance().getSecuritySandbox()
+                        LocalAICompanion.getInstance().getConfigManager().getPermissionConfig()
                     ));
                 }
             }
@@ -171,17 +156,6 @@ public class MainPanelScreen extends Screen {
             button -> {
                 if (this.client != null) {
                     this.client.setScreen(new TTSSettingsScreen(this, mainConfig));
-                }
-            }
-        ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());
-        y += 25;
-
-        // 其他设置（暂时打开LLM设置，后续可扩展）
-        this.addDrawableChild(ButtonWidget.builder(
-            Text.literal("其他设置"),
-            button -> {
-                if (this.client != null) {
-                    this.client.setScreen(new LLMSettingsScreen(this, llmConfig, presetConfig));
                 }
             }
         ).dimensions(buttonX, y, buttonWidth, buttonHeight).build());

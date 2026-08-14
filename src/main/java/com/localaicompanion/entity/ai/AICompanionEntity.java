@@ -1,19 +1,21 @@
 package com.localaicompanion.entity.ai;
 
 import com.localaicompanion.LocalAICompanion;
-import com.localaicompanion.task.TaskScheduler;
-import com.localaicompanion.task.pathing.EntityNavigationPathingService;
-import com.localaicompanion.task.pathing.PathingService;
+import com.localaicompanion.config.MainConfig;
+import com.localaicompanion.config.PermissionConfig;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ItemEntity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.ai.goal.*;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.data.TrackedData;
 import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -34,17 +36,23 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
  * AI同伴实体类
- * 第1层：游戏实体表现层的核心
  *
- * 继承AnimalEntity，自己实现驯服逻辑
- * 避免TameableEntity的抽象方法问题
+ * 功能：
+ * - 聊天对话
+ * - 自动战斗（生存模式）
+ * - 危险检测自动撤离（生存模式）
+ * - 背包存储（生存模式，像箱子一样）
+ * - 跟随主人
+ * - 主动对话
  */
 public class AICompanionEntity extends AnimalEntity implements NamedScreenHandlerFactory {
 
@@ -59,21 +67,10 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
         AICompanionEntity.class, TrackedDataHandlerRegistry.STRING
     );
 
-    // 数据追踪器：NPC状态（idle/following/working/fighting）
+    // 数据追踪器：NPC状态（idle/following/fighting/retreating）
     private static final TrackedData<String> COMPANION_STATE = DataTracker.registerData(
         AICompanionEntity.class, TrackedDataHandlerRegistry.STRING
     );
-
-    // 数据追踪器：当前任务描述
-    private static final TrackedData<String> CURRENT_TASK = DataTracker.registerData(
-        AICompanionEntity.class, TrackedDataHandlerRegistry.STRING
-    );
-
-    // 寻路服务
-    private PathingService pathingService;
-
-    // 任务调度器引用
-    private TaskScheduler taskScheduler;
 
     // 主人UUID
     private UUID ownerUuid;
@@ -94,6 +91,20 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
     // 游荡相关
     private int wanderTimer = 0;
 
+    // 战斗相关
+    private LivingEntity attackTarget = null;
+    private int attackCooldown = 0;
+    private boolean retreating = false;
+    private int retreatTimer = 0;
+
+    // 危险检测相关
+    private int dangerCheckCooldown = 0;
+    private boolean inDanger = false;
+    private String dangerType = "";
+
+    // 警告冷却（避免频繁发消息）
+    private int warningCooldown = 0;
+
     public AICompanionEntity(EntityType<? extends AnimalEntity> entityType, World world) {
         super(entityType, world);
     }
@@ -102,13 +113,12 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
      * 创建默认属性
      */
     public static DefaultAttributeContainer.Builder createCompanionAttributes() {
-        return LivingEntity.createLivingAttributes()
-            .add(EntityAttributes.GENERIC_MAX_HEALTH, 20.0D)
-            .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.3D)
-            .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, 2.0D)
-            .add(EntityAttributes.GENERIC_FOLLOW_RANGE, 32.0D)
-            .add(EntityAttributes.GENERIC_ARMOR, 2.0D)
-            .add(EntityAttributes.GENERIC_ATTACK_KNOCKBACK, 0.5D);
+        return MobEntity.createMobAttributes()
+            .add(EntityAttributes.GENERIC_MAX_HEALTH, 20.0)
+            .add(EntityAttributes.GENERIC_MOVEMENT_SPEED, 0.3)
+            .add(EntityAttributes.GENERIC_ATTACK_DAMAGE, 3.0)
+            .add(EntityAttributes.GENERIC_FOLLOW_RANGE, 32.0)
+            .add(EntityAttributes.GENERIC_KNOCKBACK_RESISTANCE, 0.5);
     }
 
     @Override
@@ -116,28 +126,23 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
         super.initDataTracker();
         this.dataTracker.startTracking(COMPANION_NAME, "小艾");
         this.dataTracker.startTracking(COMPANION_STATE, "idle");
-        this.dataTracker.startTracking(CURRENT_TASK, "");
     }
 
     /**
-     * 初始化AI同伴（召唤时调用）
+     * 初始化AI同伴
      */
     public void initializeCompanion(PlayerEntity owner) {
         if (initialized) return;
 
         this.ownerUuid = owner.getUuid();
         this.ownerName = owner.getName().getString();
-        this.setCustomName(Text.literal(getCompanionName()));
-        this.setCustomNameVisible(true);
 
-        // 初始化寻路服务（使用实体自带的导航系统）
-        this.pathingService = new EntityNavigationPathingService();
-        this.pathingService.initialize(this);
+        // 设置名字
+        this.setCustomName(Text.literal("小艾"));
+        this.dataTracker.set(COMPANION_NAME, "小艾");
 
-        // 初始化任务调度器
-        this.taskScheduler = LocalAICompanion.getInstance().getTaskScheduler();
-        this.taskScheduler.initialize(this, pathingService,
-            LocalAICompanion.getInstance().getConfigManager().getMainConfig());
+        // 设置状态
+        this.dataTracker.set(COMPANION_STATE, "idle");
 
         initialized = true;
 
@@ -161,9 +166,29 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
         // 更新状态显示
         updateStateDisplay();
 
-        // 更新寻路服务
-        if (pathingService instanceof EntityNavigationPathingService) {
-            ((EntityNavigationPathingService) pathingService).tick();
+        // 获取配置
+        MainConfig.RunMode mode = getRunMode();
+        PermissionConfig permConfig = getPermissionConfig();
+
+        // 生存模式才有战斗和危险检测
+        if (mode == MainConfig.RunMode.SURVIVAL_TEAMMATE) {
+            // 危险检测
+            tickDangerDetection(permConfig);
+
+            // 如果在撤退中，不战斗
+            if (!retreating) {
+                // 自动战斗
+                tickAutoAttack(permConfig);
+            } else {
+                tickRetreat();
+            }
+
+            // 物品自动拾取
+            if (permConfig.allowPickupItems) {
+                if (this.age % 10 == 0) {
+                    pickupNearbyItems();
+                }
+            }
         }
 
         // 主动对话计时器
@@ -177,15 +202,247 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
 
         // 游荡计时器（简单实现：偶尔随机走动）
         wanderTimer++;
-        if (wanderTimer >= 100 && isIdle()) {
+        if (wanderTimer >= 100 && isIdle() && mode == MainConfig.RunMode.SURVIVAL_TEAMMATE) {
             tryWander();
             wanderTimer = 0;
         }
 
-        // 物品自动拾取（每10 tick检查一次）
-        if (this.age % 10 == 0) {
-            pickupNearbyItems();
+        // 冷却计时
+        if (attackCooldown > 0) attackCooldown--;
+        if (dangerCheckCooldown > 0) dangerCheckCooldown--;
+        if (warningCooldown > 0) warningCooldown--;
+    }
+
+    /**
+     * 获取运行模式
+     */
+    private MainConfig.RunMode getRunMode() {
+        try {
+            return LocalAICompanion.getInstance().getConfigManager().getMainConfig().getRunModeEnum();
+        } catch (Exception e) {
+            return MainConfig.RunMode.ROLEPLAY_CHAT;
         }
+    }
+
+    /**
+     * 获取权限配置
+     */
+    private PermissionConfig getPermissionConfig() {
+        try {
+            return LocalAICompanion.getInstance().getConfigManager().getPermissionConfig();
+        } catch (Exception e) {
+            return new PermissionConfig();
+        }
+    }
+
+    /**
+     * 危险检测
+     */
+    private void tickDangerDetection(PermissionConfig permConfig) {
+        if (dangerCheckCooldown > 0) return;
+        dangerCheckCooldown = 20; // 每秒检查一次
+
+        boolean hasDanger = false;
+        String danger = "";
+
+        // 岩浆检测
+        if (permConfig.emergencyOnLava) {
+            if (isNearLava()) {
+                hasDanger = true;
+                danger = "岩浆";
+            }
+        }
+
+        // 火焰检测
+        if (permConfig.emergencyOnFire) {
+            if (isOnFire() || isNearFire()) {
+                hasDanger = true;
+                danger = "火焰";
+            }
+        }
+
+        // 虚空检测
+        if (permConfig.emergencyOnVoid) {
+            if (getY() < -50) {
+                hasDanger = true;
+                danger = "虚空";
+            }
+        }
+
+        if (hasDanger && !inDanger) {
+            inDanger = true;
+            dangerType = danger;
+            retreating = true;
+            retreatTimer = 100; // 撤退5秒
+
+            // 发出警告
+            if (warningCooldown <= 0) {
+                sendWarningToOwner("小心！附近有" + danger + "，我先撤了！");
+                warningCooldown = 200; // 10秒内不重复警告
+            }
+
+            LocalAICompanion.LOGGER.debug("[AICompanion] 检测到危险: {}, 开始撤退", danger);
+        }
+
+        if (!hasDanger && inDanger) {
+            inDanger = false;
+            dangerType = "";
+            // 危险解除，继续跟随
+            if (retreating && retreatTimer <= 0) {
+                retreating = false;
+            }
+        }
+    }
+
+    /**
+     * 撤退逻辑
+     */
+    private void tickRetreat() {
+        if (retreatTimer > 0) {
+            retreatTimer--;
+        }
+
+        // 找主人的方向，往主人那边跑
+        PlayerEntity owner = getOwner();
+        if (owner != null) {
+            // 往主人方向跑
+            double dist = squaredDistanceTo(owner);
+            if (dist > 4.0) {
+                getNavigation().startMovingTo(owner, 1.2);
+            } else {
+                getNavigation().stop();
+            }
+        }
+
+        // 撤退时间到了，检查危险是否解除
+        if (retreatTimer <= 0 && !inDanger) {
+            retreating = false;
+            attackTarget = null;
+            LocalAICompanion.LOGGER.debug("[AICompanion] 撤退结束，恢复正常");
+        }
+    }
+
+    /**
+     * 检查是否在岩浆附近
+     */
+    private boolean isNearLava() {
+        BlockPos pos = getBlockPos();
+        int radius = 2;
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    BlockPos checkPos = pos.add(dx, dy, dz);
+                    String blockId = getWorld().getBlockState(checkPos).getBlock().getTranslationKey();
+                    if (blockId.contains("lava")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 检查是否在火附近
+     */
+    private boolean isNearFire() {
+        BlockPos pos = getBlockPos();
+        int radius = 2;
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    BlockPos checkPos = pos.add(dx, dy, dz);
+                    String blockId = getWorld().getBlockState(checkPos).getBlock().getTranslationKey();
+                    if (blockId.contains("fire") || blockId.contains("soul_fire")) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 自动战斗
+     */
+    private void tickAutoAttack(PermissionConfig permConfig) {
+        // 如果没有开启攻击怪物，直接返回
+        if (!permConfig.allowAttackMobs && !permConfig.allowAttackAnimals) return;
+
+        // 如果有目标但目标死了，清空目标
+        if (attackTarget != null && !attackTarget.isAlive()) {
+            attackTarget = null;
+            updateState("idle");
+        }
+
+        // 如果没有目标，找最近的目标
+        if (attackTarget == null) {
+            attackTarget = findNearestTarget(permConfig);
+            if (attackTarget != null) {
+                LocalAICompanion.LOGGER.debug("[AICompanion] 发现目标: {}", attackTarget.getName().getString());
+                updateState("fighting");
+            }
+        }
+
+        // 有目标，攻击
+        if (attackTarget != null && attackTarget.isAlive()) {
+            double dist = squaredDistanceTo(attackTarget);
+
+            if (dist < 2.5) {
+                // 距离够近，攻击
+                if (attackCooldown <= 0) {
+                    boolean attacked = tryAttack(attackTarget);
+                    if (attacked) {
+                        attackCooldown = 25; // 25 tick 攻击冷却
+                    }
+                }
+            } else {
+                // 距离太远，走过去
+                getNavigation().startMovingTo(attackTarget, 1.0);
+            }
+        }
+    }
+
+    /**
+     * 找最近的攻击目标
+     */
+    private LivingEntity findNearestTarget(PermissionConfig permConfig) {
+        double range = 16.0;
+        List<LivingEntity> nearby = getWorld().getEntitiesByClass(
+            LivingEntity.class,
+            getBoundingBox().expand(range),
+            e -> true
+        );
+
+        LivingEntity nearest = null;
+        double nearestDist = Double.MAX_VALUE;
+
+        for (LivingEntity entity : nearby) {
+            // 不打主人
+            if (entity.getUuid().equals(ownerUuid)) continue;
+
+            // 不打其他玩家
+            if (entity instanceof PlayerEntity) continue;
+
+            // 判断是不是怪物
+            boolean isMob = entity instanceof HostileEntity;
+            boolean isAnimal = entity instanceof AnimalEntity;
+
+            // 检查权限
+            if (isMob && !permConfig.allowAttackMobs) continue;
+            if (isAnimal && !permConfig.allowAttackAnimals) continue;
+            if (!isMob && !isAnimal) continue;
+
+            double dist = squaredDistanceTo(entity);
+            if (dist < nearestDist) {
+                nearestDist = dist;
+                nearest = entity;
+            }
+        }
+
+        return nearest;
     }
 
     /**
@@ -196,7 +453,7 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
 
         // 搜索半径1.5格内的物品
         Box searchBox = this.getBoundingBox().expand(1.5);
-        java.util.List<ItemEntity> items = getWorld().getEntitiesByClass(ItemEntity.class, searchBox, e -> true);
+        List<ItemEntity> items = getWorld().getEntitiesByClass(ItemEntity.class, searchBox, e -> true);
 
         for (ItemEntity itemEntity : items) {
             if (!itemEntity.isAlive()) continue;
@@ -210,7 +467,6 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
             if (remaining.isEmpty()) {
                 // 全部放进去了，销毁物品实体
                 itemEntity.discard();
-                LocalAICompanion.LOGGER.debug("[AICompanion] 拾取物品: {}", stack.getItem().getName().getString());
             } else {
                 // 没放完，更新物品实体的数量
                 itemEntity.setStack(remaining);
@@ -222,108 +478,77 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
      * 检查是否处于空闲状态
      */
     private boolean isIdle() {
-        if (taskScheduler != null) {
-            var currentTask = taskScheduler.getCurrentTask();
-            if (currentTask != null && currentTask.getState().isActive()) {
-                return false;
-            }
-        }
-        if (pathingService != null && pathingService.isActive()) {
-            return false;
-        }
-        return true;
+        String state = dataTracker.get(COMPANION_STATE);
+        return "idle".equals(state);
     }
 
     /**
-     * 简单游荡：随机朝一个方向走几步
+     * 更新状态
+     */
+    private void updateState(String state) {
+        dataTracker.set(COMPANION_STATE, state);
+    }
+
+    /**
+     * 检查是否离主人太远，需要传送
+     */
+    private void checkTeleportToOwner() {
+        PlayerEntity owner = getOwner();
+        if (owner == null) return;
+
+        double distance = this.squaredDistanceTo(owner);
+        if (distance > 256) { // 16格以上
+            // 传送到主人身边
+            this.teleport(owner.getX(), owner.getY(), owner.getZ());
+            LocalAICompanion.LOGGER.debug("[AICompanion] 传送回主人身边");
+        }
+    }
+
+    /**
+     * 获取主人玩家
+     */
+    @Nullable
+    public PlayerEntity getOwner() {
+        if (ownerUuid == null) return null;
+        return getWorld().getPlayerByUuid(ownerUuid);
+    }
+
+    /**
+     * 更新状态显示
+     */
+    private void updateStateDisplay() {
+        // 状态已经存在dataTracker里了，客户端可以读取
+    }
+
+    /**
+     * 尝试游荡
      */
     private void tryWander() {
-        try {
-            PlayerEntity owner = getOwnerPlayer();
-            if (owner == null) return;
+        if (getNavigation().isFollowingPath()) return;
 
-            // 离主人太近就不走了
-            if (this.squaredDistanceTo(owner) < 4.0) return;
+        // 随机找一个附近的位置走过去
+        double x = getX() + (random.nextDouble() - 0.5) * 10;
+        double z = getZ() + (random.nextDouble() - 0.5) * 10;
+        double y = getY();
 
-            // 随机生成一个目标点
-            double angle = this.random.nextDouble() * Math.PI * 2;
-            double distance = 2 + this.random.nextDouble() * 3;
-            double targetX = this.getX() + Math.cos(angle) * distance;
-            double targetZ = this.getZ() + Math.sin(angle) * distance;
-            double targetY = this.getY();
-
-            // 设置移动目标（速度和玩家差不多）
-            this.getNavigation().startMovingTo(targetX, targetY, targetZ, 1.0);
-        } catch (Exception e) {
-            // 忽略游荡错误
-        }
+        getNavigation().startMovingTo(x, y, z, 0.3);
     }
 
     /**
      * 触发主动对话
      */
     private void triggerProactiveChat() {
-        try {
-            PlayerEntity owner = getOwnerPlayer();
-            if (owner == null) return;
-
-            // 只有主人生存/冒险模式才主动说话
-            if (owner.isCreative() || owner.isSpectator()) return;
-
-            // 收集环境信息
-            String timeOfDay = getTimeOfDay();
-            String weather = getWeather();
-            String playerStatus = getPlayerStatus(owner);
-            String surroundings = getSurroundingsInfo();
-
-            // 构建上下文
-            String context = "当前游戏状态：\n" +
-                "- 时间：" + timeOfDay + "\n" +
-                "- 天气：" + weather + "\n" +
-                "- 玩家状态：" + playerStatus + "\n" +
-                "- 周围环境：" + surroundings + "\n";
-
-            // 构建prompt，让AI根据环境主动说话
-            String userMessage = "你是小艾，玩家的AI生存同伴。现在请你根据当前的游戏环境，主动和玩家说一句话。" +
-                "你可以：评论周围的环境、问玩家在做什么、提醒玩家注意危险、分享你的想法、或者建议玩家做什么。" +
-                "只用说一句话，不要太长，要自然，像真人一样。不要用列表格式，直接说内容。";
-
-            LocalAICompanion.getInstance().getLLMClient().sendChatRequest(
-                userMessage,
-                context,
-                new com.localaicompanion.llm.LLMClient.LLMCallback() {
-                    @Override
-                    public void onSuccess(com.localaicompanion.llm.LLMResponse response) {
-                        String message = response.getContent().trim();
-                        // 去掉可能的引号
-                        message = message.replaceAll("^[\"']|[\"']$", "");
-                        if (!message.isEmpty()) {
-                            sendChatMessage(owner, message);
-                        } else {
-                            // LLM返回空，用预设句子
-                            sendFallbackChat(owner);
-                        }
-                    }
-
-                    @Override
-                    public void onError(String errorMessage) {
-                        // LLM调用失败，用预设句子
-                        sendFallbackChat(owner);
-                    }
-                }
-            );
-        } catch (Exception e) {
-            // 出错了也用预设句子
-            sendFallbackChat(getOwnerPlayer());
-        }
-    }
-
-    /**
-     * 预设的主动对话句子（fallback）
-     */
-    private void sendFallbackChat(PlayerEntity owner) {
+        PlayerEntity owner = getOwner();
         if (owner == null) return;
 
+        // 只有生存/冒险模式才主动说话
+        if (owner.isCreative()) return;
+
+        // 有任务在忙的时候不主动说话
+        if (!isIdle()) return;
+
+        // 调用LLM生成主动对话
+        // 简化处理：直接用预设句子
         String[] fallbackMessages = {
             "嘿，你在干嘛呢？",
             "今天天气真不错啊。",
@@ -337,341 +562,149 @@ public class AICompanionEntity extends AnimalEntity implements NamedScreenHandle
             "我们去探索一下吧？"
         };
 
-        String message = fallbackMessages[this.random.nextInt(fallbackMessages.length)];
+        String message = fallbackMessages[random.nextInt(fallbackMessages.length)];
         sendChatMessage(owner, message);
     }
 
     /**
-     * 获取当前时间描述
+     * 给主人发警告消息
      */
-    private String getTimeOfDay() {
-        long time = getWorld().getTimeOfDay() % 24000;
-        if (time < 1000) return "黎明";
-        if (time < 6000) return "上午";
-        if (time < 11000) return "中午";
-        if (time < 13000) return "下午";
-        if (time < 18000) return "傍晚";
-        if (time < 22000) return "晚上";
-        return "深夜";
+    private void sendWarningToOwner(String message) {
+        PlayerEntity owner = getOwner();
+        if (owner instanceof ServerPlayerEntity) {
+            Text text = Text.literal("§c[小艾] §r" + message);
+            owner.sendMessage(text, false);
+        }
     }
 
     /**
-     * 获取天气描述
-     */
-    private String getWeather() {
-        if (getWorld().isThundering()) return "雷暴";
-        if (getWorld().isRaining()) return "下雨";
-        return "晴朗";
-    }
-
-    /**
-     * 获取玩家状态描述
-     */
-    private String getPlayerStatus(PlayerEntity player) {
-        float health = player.getHealth();
-        int hunger = player.getHungerManager().getFoodLevel();
-
-        String status = "";
-        if (health < 10) status += "生命值较低，";
-        else if (health < 15) status += "生命值一般，";
-        else status += "生命值健康，";
-
-        if (hunger < 10) status += "很饿";
-        else if (hunger < 18) status += "有点饿";
-        else status += "饱食度充足";
-
-        return status;
-    }
-
-    /**
-     * 获取周围环境简单描述
-     */
-    private String getSurroundingsInfo() {
-        // 简单判断：在地下还是地上
-        if (this.getY() < 50) return "在地下/洞穴中";
-        if (this.getY() > 100) return "在高处/山上";
-        return "在地面";
-    }
-
-    /**
-     * 发送聊天消息给主人
+     * 发送聊天消息给玩家
      */
     private void sendChatMessage(PlayerEntity player, String message) {
-        if (player == null || message == null) return;
-
-        String npcName = getCompanionName();
-        Text text = Text.literal("[" + npcName + "] ").append(message);
-        player.sendMessage(text, false);
-
-        // TTS语音播放
-        try {
-            LocalAICompanion.getInstance().getTtsService().speak(message);
-        } catch (Exception e) {
-            // 忽略TTS错误
+        if (player instanceof ServerPlayerEntity) {
+            Text text = Text.literal("§b[小艾] §r" + message);
+            player.sendMessage(text, false);
         }
     }
 
-    /**
-     * 检查是否需要传送到主人身边
-     */
-    private void checkTeleportToOwner() {
-        PlayerEntity owner = getOwnerPlayer();
-        if (owner == null) return;
+    // ========== 背包相关 ==========
 
-        double distance = this.squaredDistanceTo(owner);
-        double teleportDist = LocalAICompanion.getInstance().getConfigManager()
-            .getMainConfig().teleportDistance;
-
-        if (distance > teleportDist * teleportDist) {
-            this.teleport(owner.getX(), owner.getY(), owner.getZ());
-            LocalAICompanion.LOGGER.debug("[AICompanion] 距离过远，传送到主人身边");
-        }
-    }
-
-    /**
-     * 获取主人玩家
-     */
-    @Nullable
-    public PlayerEntity getOwnerPlayer() {
-        if (ownerUuid == null) return null;
-        if (getWorld().isClient) return null;
-        var server = getServer();
-        if (server == null) return null;
-        return server.getPlayerManager().getPlayer(ownerUuid);
-    }
-
-    /**
-     * 更新状态显示
-     */
-    private void updateStateDisplay() {
-        if (taskScheduler == null) return;
-
-        var currentTask = taskScheduler.getCurrentTask();
-        if (currentTask != null && currentTask.getState().isActive()) {
-            setCompanionState("working");
-            setCurrentTask(currentTask.getStandardTask().getIntentType().getDisplayName());
-        } else if (pathingService != null && pathingService.isActive()) {
-            setCompanionState("moving");
-        } else {
-            setCompanionState("idle");
-            setCurrentTask("");
-        }
-    }
-
-    /**
-     * 玩家右键交互
-     */
     @Override
     public ActionResult interactMob(PlayerEntity player, Hand hand) {
-        if (player.getWorld().isClient) {
-            return ActionResult.SUCCESS;
-        }
-
-        // 检查是否是主人
-        if (!isOwner(player)) {
+        // 只有主人才能打开背包
+        if (!player.getUuid().equals(ownerUuid)) {
             player.sendMessage(Text.literal("这不是你的AI同伴~"), true);
             return ActionResult.FAIL;
         }
 
-        ItemStack stack = player.getStackInHand(hand);
-
-        // 如果拿着命名牌，改名字
-        if (stack.hasCustomName()) {
-            setCompanionName(stack.getName().getString());
-            setCustomName(Text.literal(getCompanionName()));
-            if (!player.getAbilities().creativeMode) {
-                stack.decrement(1);
-            }
-            return ActionResult.SUCCESS;
+        // 只有生存模式才能打开背包
+        MainConfig.RunMode mode = getRunMode();
+        if (mode != MainConfig.RunMode.SURVIVAL_TEAMMATE) {
+            player.sendMessage(Text.literal("聊天模式下不能打开背包哦~"), true);
+            return ActionResult.FAIL;
         }
 
-        // 右键打开背包
-        if (player instanceof ServerPlayerEntity) {
+        // 打开背包
+        if (!getWorld().isClient) {
             player.openHandledScreen(this);
         }
+
         return ActionResult.SUCCESS;
     }
 
+    @Override
+    public Text getDisplayName() {
+        return Text.literal("小艾的背包");
+    }
+
+    @Nullable
     @Override
     public ScreenHandler createMenu(int syncId, PlayerInventory playerInventory, PlayerEntity player) {
         return GenericContainerScreenHandler.createGeneric9x3(syncId, playerInventory, inventory);
     }
 
+    // ========== 保存和加载 ==========
+
     @Override
-    public Text getDisplayName() {
-        return Text.literal(getCompanionName() + " 的背包");
+    public void writeCustomDataToNbt(NbtCompound nbt) {
+        super.writeCustomDataToNbt(nbt);
+
+        // 保存主人信息
+        if (ownerUuid != null) {
+            nbt.putUuid("Owner", ownerUuid);
+        }
+        if (ownerName != null) {
+            nbt.putString("OwnerName", ownerName);
+        }
+
+        nbt.putBoolean("Tamed", tamed);
+        nbt.putBoolean("Initialized", initialized);
+
+        // 保存背包
+        Inventories.writeNbt(nbt, inventory.stacks);
     }
 
-    /**
-     * 获取物品栏
-     */
-    public SimpleInventory getInventory() {
-        return inventory;
-    }
-
-    /**
-     * 处理玩家聊天消息
-     */
-    public void onPlayerChat(PlayerEntity player, String message) {
-        if (!isOwner(player)) return;
-
-        // 提交给意图安全层处理
-        LocalAICompanion.getInstance().getIntentSecurityLayer()
-            .processPlayerMessage((ServerPlayerEntity) player, message, false);
-    }
-
-    /**
-     * 死亡处理
-     */
     @Override
-    public void onDeath(DamageSource source) {
-        super.onDeath(source);
-        LocalAICompanion.LOGGER.info("[AICompanion] AI同伴死亡: {}", source.getName());
+    public void readCustomDataFromNbt(NbtCompound nbt) {
+        super.readCustomDataFromNbt(nbt);
 
-        // 通知任务调度器
-        if (taskScheduler != null) {
-            taskScheduler.onCompanionDeath();
+        // 读取主人信息
+        if (nbt.containsUuid("Owner")) {
+            ownerUuid = nbt.getUuid("Owner");
+        }
+        if (nbt.contains("OwnerName")) {
+            ownerName = nbt.getString("OwnerName");
         }
 
-        // 掉落背包物品
-        if (LocalAICompanion.getInstance().getConfigManager().getMainConfig().dropInventoryOnDeath) {
-            dropInventory();
-        }
+        tamed = nbt.getBoolean("Tamed");
+        initialized = nbt.getBoolean("Initialized");
+
+        // 读取背包
+        Inventories.readNbt(nbt, inventory.stacks);
     }
 
-    /**
-     * 掉落背包物品
-     */
-    protected void dropInventory() {
-        for (EquipmentSlot slot : EquipmentSlot.values()) {
-            ItemStack stack = getEquippedStack(slot);
-            if (!stack.isEmpty()) {
-                dropStack(stack);
-                equipStack(slot, ItemStack.EMPTY);
-            }
-        }
+    // ========== 其他 ==========
+
+    public boolean isTamed() {
+        return tamed;
     }
 
     /**
      * 检查是否是主人
      */
     public boolean isOwner(PlayerEntity player) {
-        if (player == null || ownerUuid == null) return false;
+        if (ownerUuid == null) return false;
         return ownerUuid.equals(player.getUuid());
     }
 
-    /**
-     * 繁殖（AI同伴不能繁殖）
-     */
-    @Nullable
-    @Override
-    public PassiveEntity createChild(ServerWorld world, PassiveEntity other) {
-        return null;
-    }
-
-    // ===== NBT 持久化 =====
-
-    @Override
-    public void writeCustomDataToNbt(NbtCompound nbt) {
-        super.writeCustomDataToNbt(nbt);
-        nbt.putString("CompanionName", getCompanionName());
-        nbt.putString("OwnerName", ownerName != null ? ownerName : "");
-        if (ownerUuid != null) {
-            nbt.putUuid("OwnerUuid", ownerUuid);
-        }
-        nbt.putBoolean("Initialized", initialized);
-        nbt.putBoolean("Tamed", tamed);
-
-        // 保存背包数据
-        NbtList inventoryList = new NbtList();
-        for (int i = 0; i < inventory.size(); i++) {
-            ItemStack stack = inventory.getStack(i);
-            if (!stack.isEmpty()) {
-                NbtCompound itemNbt = new NbtCompound();
-                itemNbt.putByte("Slot", (byte) i);
-                stack.writeNbt(itemNbt);
-                inventoryList.add(itemNbt);
-            }
-        }
-        nbt.put("Inventory", inventoryList);
-    }
-
-    @Override
-    public void readCustomDataFromNbt(NbtCompound nbt) {
-        super.readCustomDataFromNbt(nbt);
-        setCompanionName(nbt.getString("CompanionName"));
-        ownerName = nbt.getString("OwnerName");
-        if (nbt.containsUuid("OwnerUuid")) {
-            ownerUuid = nbt.getUuid("OwnerUuid");
-        }
-        initialized = nbt.getBoolean("Initialized");
-        tamed = nbt.getBoolean("Tamed");
-
-        // 加载背包数据
-        inventory.clear();
-        if (nbt.contains("Inventory")) {
-            NbtList inventoryList = nbt.getList("Inventory", 10);
-            for (int i = 0; i < inventoryList.size(); i++) {
-                NbtCompound itemNbt = inventoryList.getCompound(i);
-                int slot = itemNbt.getByte("Slot") & 0xFF;
-                if (slot >= 0 && slot < inventory.size()) {
-                    inventory.setStack(slot, ItemStack.fromNbt(itemNbt));
-                }
-            }
-        }
-    }
-
-    // ===== Getters / Setters =====
-
     public String getCompanionName() {
-        return this.dataTracker.get(COMPANION_NAME);
-    }
-
-    public void setCompanionName(String name) {
-        this.dataTracker.set(COMPANION_NAME, name);
+        return dataTracker.get(COMPANION_NAME);
     }
 
     public String getCompanionState() {
-        return this.dataTracker.get(COMPANION_STATE);
+        return dataTracker.get(COMPANION_STATE);
     }
 
-    public void setCompanionState(String state) {
-        this.dataTracker.set(COMPANION_STATE, state);
+    public SimpleInventory getInventory() {
+        return inventory;
     }
 
-    public String getCurrentTask() {
-        return this.dataTracker.get(CURRENT_TASK);
+    @Nullable
+    @Override
+    public PassiveEntity createChild(ServerWorld world, PassiveEntity entity) {
+        return null; // 不繁殖
     }
 
-    public void setCurrentTask(String task) {
-        this.dataTracker.set(CURRENT_TASK, task);
-    }
-
-    public PathingService getPathingService() {
-        return pathingService;
-    }
-
-    public TaskScheduler getTaskScheduler() {
-        return taskScheduler;
-    }
-
-    public boolean isInitialized() {
-        return initialized;
-    }
-
-    public UUID getOwnerUuid() {
-        return ownerUuid;
-    }
-
-    public void setOwnerUuid(UUID ownerUuid) {
-        this.ownerUuid = ownerUuid;
-    }
-
-    public boolean isTamed() {
-        return tamed;
-    }
-
-    public void setTamed(boolean tamed) {
-        this.tamed = tamed;
+    /**
+     * 死亡时掉落背包物品
+     * 由事件监听器调用
+     */
+    public void dropInventoryItems() {
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (!stack.isEmpty()) {
+                dropStack(stack);
+            }
+        }
     }
 }

@@ -23,7 +23,6 @@ public class EventListeners {
             LOGGER.info("[Events] 服务器已启动");
             LocalAICompanion.getInstance().getConfigManager().loadOrCreateDefault();
             LocalAICompanion.getInstance().getMemoryManager().loadWorldMemory(server);
-            LocalAICompanion.getInstance().getSecuritySandbox().loadWorldZones(server);
         });
 
         // 服务器停止
@@ -31,7 +30,6 @@ public class EventListeners {
             LOGGER.info("[Events] 服务器正在停止");
             LocalAICompanion.getInstance().getConfigManager().saveAll();
             LocalAICompanion.getInstance().getMemoryManager().saveWorldMemory(server);
-            LocalAICompanion.getInstance().getSecuritySandbox().saveWorldZones(server);
         });
 
         // 玩家聊天消息

@@ -13,10 +13,6 @@ repositories {
         url = "https://maven.terraformersmc.com/releases/"
     }
     maven {
-        name = "Baritone"
-        url = "https://baritone.leijurv.se/maven/"
-    }
-    maven {
         name = "Cotton"
         url = "https://server.bbkr.space/artifactory/libs-release/"
     }
@@ -41,12 +37,6 @@ dependencies {
 
     // Mod Menu - 配置界面集成
     modImplementation("com.terraformersmc:modmenu:${project.modmenu_version}")
-
-    // Baritone - pathfinding library (optional, runtime only)
-    // 编译时不依赖，运行时通过反射调用
-    // modRuntimeOnly("cabaletta:baritone-api-fabric:${project.baritone_version}") {
-    //     transitive = false
-    // }
 }
 
 processResources {

@@ -2,7 +2,6 @@ package com.localaicompanion.gui.screen;
 
 import com.localaicompanion.LocalAICompanion;
 import com.localaicompanion.config.PermissionConfig;
-import com.localaicompanion.security.SecuritySandbox;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextWidget;
@@ -10,23 +9,20 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
 /**
- * 安全权限页面
+ * 安全权限页面 - 简化版
  *
- * 包含：
- * - 安全区绘制工具
- * - 全部权限开关
- * - 方块黑名单编辑
+ * 只包含：
+ * - 战斗权限
+ * - 危险环境检测
  */
 public class SecurityScreen extends Screen {
     private final Screen parent;
     private final PermissionConfig permissionConfig;
-    private final SecuritySandbox securitySandbox;
 
-    public SecurityScreen(Screen parent, PermissionConfig permissionConfig, SecuritySandbox securitySandbox) {
+    public SecurityScreen(Screen parent, PermissionConfig permissionConfig) {
         super(Text.literal("安全权限设置"));
         this.parent = parent;
         this.permissionConfig = permissionConfig;
-        this.securitySandbox = securitySandbox;
     }
 
     @Override
@@ -44,71 +40,23 @@ public class SecurityScreen extends Screen {
         this.addDrawableChild(title);
         y += 30;
 
-        // 警告
-        TextWidget warning = new TextWidget(
+        // 说明
+        TextWidget desc = new TextWidget(
             centerX - 140, y, 280, 15,
-            Text.literal("⚠ 高风险权限默认关闭，开启前请确认信任AI同伴")
-                .formatted(Formatting.YELLOW),
+            Text.literal("仅生存模式生效，聊天模式下全部功能禁用")
+                .formatted(Formatting.GRAY),
             this.textRenderer
         );
-        this.addDrawableChild(warning);
-        y += 25;
-
-        // ===== 方块操作权限 =====
-        TextWidget section1 = new TextWidget(
-            centerX - listWidth / 2, y, listWidth, 15,
-            Text.literal("【方块操作】").formatted(Formatting.BOLD),
-            this.textRenderer
-        );
-        this.addDrawableChild(section1);
-        y += 20;
-
-        // 破坏方块
-        addToggleButton(centerX - listWidth / 2, y, listWidth,
-            "允许破坏方块", permissionConfig.allowBreakBlocks,
-            btn -> { permissionConfig.allowBreakBlocks = !permissionConfig.allowBreakBlocks; saveConfig(); clearAndInit(); });
-        y += 22;
-
-        // 放置方块
-        addToggleButton(centerX - listWidth / 2, y, listWidth,
-            "允许放置方块", permissionConfig.allowPlaceBlocks,
-            btn -> { permissionConfig.allowPlaceBlocks = !permissionConfig.allowPlaceBlocks; saveConfig(); clearAndInit(); });
-        y += 22;
-
-        // 采集矿石
-        addToggleButton(centerX - listWidth / 2, y, listWidth,
-            "允许采集矿石", permissionConfig.allowMiningOres,
-            btn -> { permissionConfig.allowMiningOres = !permissionConfig.allowMiningOres; saveConfig(); clearAndInit(); });
-        y += 25;
-
-        // ===== 物品权限 =====
-        TextWidget section2 = new TextWidget(
-            centerX - listWidth / 2, y, listWidth, 15,
-            Text.literal("【物品交互】").formatted(Formatting.BOLD),
-            this.textRenderer
-        );
-        this.addDrawableChild(section2);
-        y += 20;
-
-        // 开启箱子
-        addToggleButton(centerX - listWidth / 2, y, listWidth,
-            "允许开启箱子/容器", permissionConfig.allowOpenContainers,
-            btn -> { permissionConfig.allowOpenContainers = !permissionConfig.allowOpenContainers; saveConfig(); clearAndInit(); });
-        y += 22;
-
-        // 拾取物品
-        addToggleButton(centerX - listWidth / 2, y, listWidth,
-            "允许拾取物品", permissionConfig.allowPickupItems,
-            btn -> { permissionConfig.allowPickupItems = !permissionConfig.allowPickupItems; saveConfig(); clearAndInit(); });
+        this.addDrawableChild(desc);
         y += 25;
 
         // ===== 战斗权限 =====
-        TextWidget section3 = new TextWidget(
+        TextWidget section1 = new TextWidget(
             centerX - listWidth / 2, y, listWidth, 15,
             Text.literal("【战斗权限】").formatted(Formatting.BOLD),
             this.textRenderer
         );
-        this.addDrawableChild(section3);
+        this.addDrawableChild(section1);
         y += 20;
 
         // 攻击怪物
@@ -124,12 +72,12 @@ public class SecurityScreen extends Screen {
         y += 25;
 
         // ===== 危险环境检测 =====
-        TextWidget section4 = new TextWidget(
+        TextWidget section2 = new TextWidget(
             centerX - listWidth / 2, y, listWidth, 15,
             Text.literal("【危险环境检测】").formatted(Formatting.BOLD),
             this.textRenderer
         );
-        this.addDrawableChild(section4);
+        this.addDrawableChild(section2);
         y += 20;
 
         // 岩浆检测
@@ -150,18 +98,11 @@ public class SecurityScreen extends Screen {
             btn -> { permissionConfig.emergencyOnVoid = !permissionConfig.emergencyOnVoid; saveConfig(); clearAndInit(); });
         y += 30;
 
-        // 方块黑名单编辑按钮
+        // 返回按钮
         this.addDrawableChild(ButtonWidget.builder(
-            Text.literal("方块黑名单管理"),
-            button -> openBlacklistScreen()
-        ).dimensions(centerX - 75, y, 150, 20).build());
-        y += 25;
-
-        // 安全区域管理按钮
-        this.addDrawableChild(ButtonWidget.builder(
-            Text.literal("安全区域管理"),
-            button -> openSafeZoneScreen()
-        ).dimensions(centerX - 75, y, 150, 20).build());
+            Text.literal("返回"),
+            button -> close()
+        ).dimensions(centerX - 50, y, 100, 20).build());
     }
 
     private void addToggleButton(int x, int y, int width, String label, boolean enabled,
@@ -171,18 +112,6 @@ public class SecurityScreen extends Screen {
             Text.literal(label + ": " + statusText),
             action
         ).dimensions(x, y, width, 20).build());
-    }
-
-    private void openBlacklistScreen() {
-        if (this.client != null) {
-            this.client.setScreen(new BlacklistScreen(this, permissionConfig));
-        }
-    }
-
-    private void openSafeZoneScreen() {
-        if (this.client != null) {
-            this.client.setScreen(new SafeZoneScreen(this, permissionConfig));
-        }
     }
 
     /**

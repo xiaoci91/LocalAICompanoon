@@ -4,7 +4,10 @@ import net.minecraft.entity.ai.pathing.EntityNavigation;
 import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,12 +20,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * 实体导航寻路服务
  *
  * 使用Minecraft实体自带的Navigation系统进行寻路
- * 适用于AI同伴实体的基础移动
+ * 所有操作都在服务器线程中通过tick()驱动
  *
  * 功能：
  * - 移动到指定位置
  * - 跟随目标实体
- * - 基础的方块采集（走到旁边然后破坏）
+ * - 采集方块（挖矿、砍树）
+ * - 攻击实体（打怪）
  */
 public class EntityNavigationPathingService implements PathingService {
     private static final Logger LOGGER = LoggerFactory.getLogger("LocalAICompanion-NavPathing");
@@ -32,15 +36,37 @@ public class EntityNavigationPathingService implements PathingService {
     private World world;
     private boolean initialized = false;
 
+    // 活动状态
     private final AtomicBoolean isActive = new AtomicBoolean(false);
     private final AtomicBoolean isPaused = new AtomicBoolean(false);
     private final AtomicReference<BlockPos> currentTarget = new AtomicReference<>(null);
+
+    // 当前任务的future
     private final AtomicReference<CompletableFuture<PathResult>> currentFuture = new AtomicReference<>(null);
+
+    // 任务类型
+    private enum TaskType {
+        NONE, MOVE_TO, MINE_BLOCK, ATTACK_ENTITY, FOLLOW
+    }
+
+    private TaskType currentTaskType = TaskType.NONE;
 
     // 跟随相关
     private LivingEntity followTarget;
     private float followDistance = 3.0f;
     private boolean following = false;
+
+    // 采集相关
+    private String mineBlockName;
+    private int mineAmount;
+    private int mineRadius;
+    private int minedCount = 0;
+    private BlockPos currentMineTarget;
+    private int mineCooldown = 0;
+
+    // 攻击相关
+    private LivingEntity attackTarget;
+    private int attackCooldown = 0;
 
     @Override
     public void initialize(LivingEntity entity) {
@@ -64,20 +90,20 @@ public class EntityNavigationPathingService implements PathingService {
             return CompletableFuture.completedFuture(PathResult.failure("寻路服务未初始化"));
         }
 
-        // 停止当前任务
         stopAll();
 
         currentTarget.set(targetPos);
         CompletableFuture<PathResult> future = new CompletableFuture<>();
         currentFuture.set(future);
         isActive.set(true);
+        currentTaskType = TaskType.MOVE_TO;
 
         try {
-            // 开始寻路
             boolean started = navigation.startMovingTo(targetPos.getX(), targetPos.getY(), targetPos.getZ(), 1.0);
             if (!started) {
                 future.complete(PathResult.failure("无法找到路径"));
                 isActive.set(false);
+                currentTaskType = TaskType.NONE;
                 return future;
             }
 
@@ -86,6 +112,7 @@ public class EntityNavigationPathingService implements PathingService {
             LOGGER.error("[NavPathing] moveTo失败: {}", e.getMessage());
             future.complete(PathResult.failure("寻路失败: " + e.getMessage()));
             isActive.set(false);
+            currentTaskType = TaskType.NONE;
         }
 
         return future;
@@ -93,42 +120,32 @@ public class EntityNavigationPathingService implements PathingService {
 
     @Override
     public CompletableFuture<PathResult> moveToAndBreak(BlockPos targetPos) {
-        if (!initialized || entity == null) {
+        if (!initialized || entity == null || world == null) {
             return CompletableFuture.completedFuture(PathResult.failure("寻路服务未初始化"));
         }
+
+        stopAll();
 
         currentTarget.set(targetPos);
         CompletableFuture<PathResult> future = new CompletableFuture<>();
         currentFuture.set(future);
         isActive.set(true);
+        currentTaskType = TaskType.MINE_BLOCK;
+        currentMineTarget = targetPos;
+        mineBlockName = "";
+        mineAmount = 1;
+        minedCount = 0;
 
         // 先移动到目标旁边
-        moveTo(targetPos).thenAccept(result -> {
-            if (result.success) {
-                // 到达后破坏方块
-                try {
-                    boolean broken = world.breakBlock(targetPos, true, entity);
-                    if (broken) {
-                        future.complete(PathResult.successMined(targetPos, 1));
-                    } else {
-                        future.complete(PathResult.failure("无法破坏方块"));
-                    }
-                } catch (Exception e) {
-                    future.complete(PathResult.failure("破坏方块失败: " + e.getMessage()));
-                }
-                isActive.set(false);
-            } else {
-                future.complete(result);
-                isActive.set(false);
-            }
-        });
+        navigation.startMovingTo(targetPos.getX(), targetPos.getY(), targetPos.getZ(), 1.0);
+
+        LOGGER.info("[NavPathing] 开始移动并破坏方块: {}", targetPos);
 
         return future;
     }
 
     @Override
     public CompletableFuture<PathResult> moveToAndPlace(BlockPos targetPos, String blockName) {
-        // 放置方块功能暂未实现
         return CompletableFuture.completedFuture(PathResult.failure("放置方块功能开发中"));
     }
 
@@ -136,18 +153,35 @@ public class EntityNavigationPathingService implements PathingService {
     public void followEntity(LivingEntity target, float followDistance) {
         if (!initialized || entity == null || navigation == null) return;
 
+        stopAll();
+
         this.followTarget = target;
         this.followDistance = followDistance;
         this.following = true;
         isActive.set(true);
+        currentTaskType = TaskType.FOLLOW;
 
         LOGGER.info("[NavPathing] 开始跟随: {}", target.getName().getString());
     }
 
     @Override
     public CompletableFuture<PathResult> attackEntity(LivingEntity target) {
-        // 战斗功能暂未实现
-        return CompletableFuture.completedFuture(PathResult.failure("战斗功能开发中"));
+        if (!initialized || entity == null || world == null) {
+            return CompletableFuture.completedFuture(PathResult.failure("寻路服务未初始化"));
+        }
+
+        stopAll();
+
+        CompletableFuture<PathResult> future = new CompletableFuture<>();
+        currentFuture.set(future);
+        isActive.set(true);
+        currentTaskType = TaskType.ATTACK_ENTITY;
+        attackTarget = target;
+        attackCooldown = 0;
+
+        LOGGER.info("[NavPathing] 开始攻击: {}", target.getName().getString());
+
+        return future;
     }
 
     @Override
@@ -156,67 +190,20 @@ public class EntityNavigationPathingService implements PathingService {
             return CompletableFuture.completedFuture(PathResult.failure("寻路服务未初始化"));
         }
 
+        stopAll();
+
         CompletableFuture<PathResult> future = new CompletableFuture<>();
         currentFuture.set(future);
         isActive.set(true);
+        currentTaskType = TaskType.MINE_BLOCK;
+        mineBlockName = blockName;
+        mineAmount = amount;
+        mineRadius = searchRadius;
+        minedCount = 0;
+        currentMineTarget = null;
+        mineCooldown = 0;
 
-        // 在新线程中搜索并采集
-        Thread miningThread = new Thread(() -> {
-            int mined = 0;
-            BlockPos lastPos = entity.getBlockPos();
-
-            try {
-                while (mined < amount && isActive.get() && !future.isDone()) {
-                    // 搜索附近的目标方块
-                    BlockPos target = findNearbyBlock(blockName, searchRadius);
-                    if (target == null) {
-                        future.complete(PathResult.failure("附近找不到" + blockName));
-                        isActive.set(false);
-                        return;
-                    }
-
-                    LOGGER.info("[NavPathing] 找到目标方块: {}, 已挖: {}/{}", target, mined, amount);
-
-                    // 移动到目标旁边并破坏
-                    // 注意：这是在异步线程，需要在服务器线程执行
-                    // 简化处理：直接设置目标，等待实体自己走过去
-                    BlockPos finalTarget = target;
-                    CompletableFuture<PathResult> moveFuture = moveTo(finalTarget);
-
-                    // 等待移动完成（最多等30秒）
-                    long startTime = System.currentTimeMillis();
-                    while (!moveFuture.isDone() && System.currentTimeMillis() - startTime < 30000) {
-                        Thread.sleep(500);
-                    }
-
-                    if (moveFuture.isDone() && moveFuture.get().success) {
-                        // 破坏方块（需要在服务器线程）
-                        // 简化：直接破坏
-                        boolean broken = world.breakBlock(finalTarget, true, entity);
-                        if (broken) {
-                            mined++;
-                            lastPos = finalTarget;
-                            LOGGER.info("[NavPathing] 已挖 {} 个 {}", mined, blockName);
-                        }
-                    }
-
-                    Thread.sleep(500);
-                }
-
-                if (mined >= amount) {
-                    future.complete(PathResult.successMined(lastPos, mined));
-                } else {
-                    future.complete(PathResult.failure("只挖到了 " + mined + " 个 " + blockName));
-                }
-            } catch (Exception e) {
-                LOGGER.error("[NavPathing] 采集失败: {}", e.getMessage());
-                future.complete(PathResult.failure("采集失败: " + e.getMessage()));
-            } finally {
-                isActive.set(false);
-            }
-        }, "mining-worker");
-        miningThread.setDaemon(true);
-        miningThread.start();
+        LOGGER.info("[NavPathing] 开始采集: {} x{}, 半径{}", blockName, amount, searchRadius);
 
         return future;
     }
@@ -229,7 +216,7 @@ public class EntityNavigationPathingService implements PathingService {
 
         BlockPos entityPos = entity.getBlockPos();
 
-        // 简单的搜索：从近到远扫描
+        // 从近到远搜索
         for (int r = 1; r <= radius; r++) {
             for (int dx = -r; dx <= r; dx++) {
                 for (int dy = -r; dy <= r; dy++) {
@@ -237,11 +224,20 @@ public class EntityNavigationPathingService implements PathingService {
                         if (Math.abs(dx) != r && Math.abs(dy) != r && Math.abs(dz) != r) continue;
 
                         BlockPos pos = entityPos.add(dx, dy, dz);
+
+                        // 检查Y坐标是否合理
+                        if (pos.getY() < -64 || pos.getY() > 320) continue;
+
                         String blockId = world.getBlockState(pos).getBlock().getTranslationKey();
 
-                        // 简单匹配
-                        if (blockId.contains(blockName) || blockId.contains(blockName.replace("_ore", ""))) {
-                            return pos;
+                        // 简单匹配：包含方块名
+                        if (blockId.contains(blockName) ||
+                            blockId.contains(blockName.replace("_ore", "")) ||
+                            blockId.contains(blockName.replace("_log", ""))) {
+                            // 确保不是空气
+                            if (!world.isAir(pos)) {
+                                return pos;
+                            }
                         }
                     }
                 }
@@ -257,6 +253,11 @@ public class EntityNavigationPathingService implements PathingService {
         following = false;
         followTarget = null;
         currentTarget.set(null);
+        currentTaskType = TaskType.NONE;
+        attackTarget = null;
+        currentMineTarget = null;
+        mineCooldown = 0;
+        attackCooldown = 0;
 
         CompletableFuture<PathResult> future = currentFuture.getAndSet(null);
         if (future != null && !future.isDone()) {
@@ -315,37 +316,234 @@ public class EntityNavigationPathingService implements PathingService {
     }
 
     /**
-     * Tick更新（需要在实体tick中调用）
+     * Tick更新（必须在服务器线程中调用）
      */
     public void tick() {
         if (!initialized || !isActive.get() || isPaused.get()) return;
 
-        // 检查移动任务是否完成
-        CompletableFuture<PathResult> future = currentFuture.get();
-        if (future != null && !future.isDone() && currentTarget.get() != null) {
-            // 检查是否到达目标
-            BlockPos target = currentTarget.get();
-            double dist = entity.squaredDistanceTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+        try {
+            switch (currentTaskType) {
+                case MOVE_TO:
+                    tickMoveTo();
+                    break;
+                case MINE_BLOCK:
+                    tickMineBlock();
+                    break;
+                case ATTACK_ENTITY:
+                    tickAttackEntity();
+                    break;
+                case FOLLOW:
+                    tickFollow();
+                    break;
+                default:
+                    break;
+            }
+        } catch (Exception e) {
+            LOGGER.error("[NavPathing] tick异常: {}", e.getMessage());
+            completeWithError("执行异常: " + e.getMessage());
+        }
+    }
 
+    /**
+     * 移动任务tick
+     */
+    private void tickMoveTo() {
+        BlockPos target = currentTarget.get();
+        if (target == null) return;
+
+        // 检查是否到达目标
+        double dist = entity.squaredDistanceTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
+        if (dist < 4.0) {
+            LOGGER.info("[NavPathing] 到达目标: {}", target);
+            completeSuccess(target);
+        }
+
+        // 检查导航是否结束
+        if (navigation.isIdle()) {
+            // 导航结束，检查是否到达
             if (dist < 4.0) {
-                // 到达目标
-                LOGGER.info("[NavPathing] 到达目标: {}", target);
-                future.complete(PathResult.success(target));
-                isActive.set(false);
+                completeSuccess(target);
+            } else {
+                completeWithError("无法到达目标");
             }
+        }
+    }
+
+    /**
+     * 采集任务tick
+     */
+    private void tickMineBlock() {
+        CompletableFuture<PathResult> future = currentFuture.get();
+        if (future == null || future.isDone()) return;
+
+        // 冷却中
+        if (mineCooldown > 0) {
+            mineCooldown--;
+            return;
         }
 
-        // 跟随逻辑
-        if (following && followTarget != null && followTarget.isAlive()) {
-            double dist = entity.squaredDistanceTo(followTarget);
-            if (dist > followDistance * followDistance) {
-                // 距离太远，走过去
-                navigation.startMovingTo(followTarget, 1.0);
-            } else {
-                // 距离够近，停下
-                navigation.stop();
+        // 如果没有当前目标，搜索新目标
+        if (currentMineTarget == null) {
+            if (minedCount >= mineAmount) {
+                // 挖够了
+                LOGGER.info("[NavPathing] 采集完成: {} x{}", mineBlockName, minedCount);
+                completeSuccessMined(entity.getBlockPos(), minedCount);
+                return;
             }
+
+            // 搜索新目标
+            BlockPos target = findNearbyBlock(mineBlockName, mineRadius);
+            if (target == null) {
+                if (minedCount > 0) {
+                    // 挖了一些，但是找不到更多了
+                    completeSuccessMined(entity.getBlockPos(), minedCount);
+                } else {
+                    completeWithError("附近找不到" + mineBlockName);
+                }
+                return;
+            }
+
+            currentMineTarget = target;
+            currentTarget.set(target);
+            navigation.startMovingTo(target.getX(), target.getY(), target.getZ(), 1.0);
+            LOGGER.info("[NavPathing] 找到目标: {}, 进度: {}/{}", target, minedCount, mineAmount);
+            return;
         }
+
+        // 有目标，检查是否到达
+        double dist = entity.squaredDistanceTo(
+            currentMineTarget.getX() + 0.5,
+            currentMineTarget.getY(),
+            currentMineTarget.getZ() + 0.5
+        );
+
+        if (dist < 4.0) {
+            // 到达目标，破坏方块
+            boolean broken = world.breakBlock(currentMineTarget, true, entity);
+            if (broken) {
+                minedCount++;
+                mineCooldown = 20; // 20 tick 冷却
+                LOGGER.info("[NavPathing] 已挖 {} 个 {}", minedCount, mineBlockName);
+            } else {
+                mineCooldown = 10;
+            }
+            currentMineTarget = null;
+            currentTarget.set(null);
+        } else if (navigation.isIdle()) {
+            // 导航结束但没到达，重新找目标
+            currentMineTarget = null;
+            currentTarget.set(null);
+            mineCooldown = 10;
+        }
+    }
+
+    /**
+     * 攻击任务tick
+     */
+    private void tickAttackEntity() {
+        CompletableFuture<PathResult> future = currentFuture.get();
+        if (future == null || future.isDone()) return;
+
+        if (attackTarget == null || !attackTarget.isAlive()) {
+            // 目标死亡或消失
+            if (attackTarget != null && !attackTarget.isAlive()) {
+                LOGGER.info("[NavPathing] 目标已击杀: {}", attackTarget.getName().getString());
+                completeSuccess(attackTarget.getBlockPos());
+            } else {
+                completeWithError("目标消失了");
+            }
+            return;
+        }
+
+        // 冷却中
+        if (attackCooldown > 0) {
+            attackCooldown--;
+            // 冷却时也跟着目标
+            if (entity.squaredDistanceTo(attackTarget) > 2.0) {
+                navigation.startMovingTo(attackTarget, 1.0);
+            }
+            return;
+        }
+
+        double dist = entity.squaredDistanceTo(attackTarget);
+
+        if (dist < 2.5) {
+            // 距离够近，攻击
+            boolean attacked = entity.tryAttack(attackTarget);
+            if (attacked) {
+                attackCooldown = 20; // 20 tick 攻击冷却
+                LOGGER.debug("[NavPathing] 攻击目标: {}", attackTarget.getName().getString());
+            } else {
+                attackCooldown = 10;
+            }
+        } else {
+            // 距离太远，走过去
+            navigation.startMovingTo(attackTarget, 1.0);
+        }
+    }
+
+    /**
+     * 跟随任务tick
+     */
+    private void tickFollow() {
+        if (followTarget == null || !followTarget.isAlive()) {
+            following = false;
+            followTarget = null;
+            isActive.set(false);
+            currentTaskType = TaskType.NONE;
+            return;
+        }
+
+        double dist = entity.squaredDistanceTo(followTarget);
+        if (dist > followDistance * followDistance) {
+            // 距离太远，走过去
+            navigation.startMovingTo(followTarget, 1.0);
+        } else {
+            // 距离够近，停下
+            navigation.stop();
+        }
+    }
+
+    /**
+     * 完成任务（成功）
+     */
+    private void completeSuccess(BlockPos finalPos) {
+        CompletableFuture<PathResult> future = currentFuture.getAndSet(null);
+        if (future != null && !future.isDone()) {
+            future.complete(PathResult.success(finalPos));
+        }
+        isActive.set(false);
+        currentTaskType = TaskType.NONE;
+        currentTarget.set(null);
+    }
+
+    /**
+     * 完成任务（采集成功）
+     */
+    private void completeSuccessMined(BlockPos finalPos, int count) {
+        CompletableFuture<PathResult> future = currentFuture.getAndSet(null);
+        if (future != null && !future.isDone()) {
+            future.complete(PathResult.successMined(finalPos, count));
+        }
+        isActive.set(false);
+        currentTaskType = TaskType.NONE;
+        currentTarget.set(null);
+        currentMineTarget = null;
+    }
+
+    /**
+     * 完成任务（失败）
+     */
+    private void completeWithError(String message) {
+        CompletableFuture<PathResult> future = currentFuture.getAndSet(null);
+        if (future != null && !future.isDone()) {
+            future.complete(PathResult.failure(message));
+        }
+        isActive.set(false);
+        currentTaskType = TaskType.NONE;
+        currentTarget.set(null);
+        currentMineTarget = null;
+        attackTarget = null;
     }
 
     public boolean isFollowing() {

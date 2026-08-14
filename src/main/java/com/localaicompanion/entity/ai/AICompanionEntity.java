@@ -16,13 +16,21 @@ import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.entity.passive.PassiveEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.Inventories;
+import net.minecraft.inventory.SimpleInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.screen.GenericContainerScreenHandler;
+import net.minecraft.screen.NamedScreenHandlerFactory;
+import net.minecraft.screen.ScreenHandler;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Hand;
+import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.jetbrains.annotations.Nullable;
@@ -36,7 +44,13 @@ import java.util.UUID;
  * 继承AnimalEntity，自己实现驯服逻辑
  * 避免TameableEntity的抽象方法问题
  */
-public class AICompanionEntity extends AnimalEntity {
+public class AICompanionEntity extends AnimalEntity implements NamedScreenHandlerFactory {
+
+    // 背包大小（27格 = 3行）
+    private static final int INVENTORY_SIZE = 27;
+
+    // 物品栏
+    private final SimpleInventory inventory = new SimpleInventory(INVENTORY_SIZE);
 
     // 数据追踪器：NPC名称
     private static final TrackedData<String> COMPANION_NAME = DataTracker.registerData(
@@ -434,16 +448,28 @@ public class AICompanionEntity extends AnimalEntity {
             return ActionResult.SUCCESS;
         }
 
-        // 右键打开GUI
-        openCompanionGUI(player);
+        // 右键打开背包
+        if (player instanceof ServerPlayerEntity) {
+            player.openHandledScreen(this);
+        }
         return ActionResult.SUCCESS;
     }
 
+    @Override
+    public ScreenHandler createMenu(int syncId, PlayerInventory playerInventory, PlayerEntity player) {
+        return GenericContainerScreenHandler.createGeneric9x3(syncId, playerInventory, inventory);
+    }
+
+    @Override
+    public Text getDisplayName() {
+        return Text.literal(getCompanionName() + " 的背包");
+    }
+
     /**
-     * 打开同伴GUI
+     * 获取物品栏
      */
-    private void openCompanionGUI(PlayerEntity player) {
-        player.sendMessage(Text.literal("打开AI同伴面板..."), true);
+    public SimpleInventory getInventory() {
+        return inventory;
     }
 
     /**
@@ -518,6 +544,19 @@ public class AICompanionEntity extends AnimalEntity {
         }
         nbt.putBoolean("Initialized", initialized);
         nbt.putBoolean("Tamed", tamed);
+
+        // 保存背包数据
+        NbtList inventoryList = new NbtList();
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (!stack.isEmpty()) {
+                NbtCompound itemNbt = new NbtCompound();
+                itemNbt.putByte("Slot", (byte) i);
+                stack.writeNbt(itemNbt);
+                inventoryList.add(itemNbt);
+            }
+        }
+        nbt.put("Inventory", inventoryList);
     }
 
     @Override
@@ -530,6 +569,19 @@ public class AICompanionEntity extends AnimalEntity {
         }
         initialized = nbt.getBoolean("Initialized");
         tamed = nbt.getBoolean("Tamed");
+
+        // 加载背包数据
+        inventory.clear();
+        if (nbt.contains("Inventory")) {
+            NbtList inventoryList = nbt.getList("Inventory", 10);
+            for (int i = 0; i < inventoryList.size(); i++) {
+                NbtCompound itemNbt = inventoryList.getCompound(i);
+                int slot = itemNbt.getByte("Slot") & 0xFF;
+                if (slot >= 0 && slot < inventory.size()) {
+                    inventory.setStack(slot, ItemStack.fromNbt(itemNbt));
+                }
+            }
+        }
     }
 
     // ===== Getters / Setters =====

@@ -35,6 +35,10 @@ public class LLMSettingsScreen extends Screen {
     private String selectedPreset;
     private String[] presetNames;
 
+    // API类型相关
+    private String selectedApiType;
+    private static final String[] API_TYPES = {"OLLAMA", "OPENAI_COMPATIBLE", "LM_STUDIO", "LLAMA_CPP"};
+
     public LLMSettingsScreen(Screen parent, LLMConfig config, HardwarePresetConfig presetConfig) {
         super(Text.literal("LLM设置"));
         this.parent = parent;
@@ -42,6 +46,7 @@ public class LLMSettingsScreen extends Screen {
         this.presetConfig = presetConfig;
         this.selectedPreset = config.currentPreset;
         this.presetNames = presetConfig.getPresetNames();
+        this.selectedApiType = config.apiType;
     }
 
     @Override
@@ -91,6 +96,21 @@ public class LLMSettingsScreen extends Screen {
         );
         apiUrlField.setText(config.apiBaseUrl);
         this.addDrawableChild(apiUrlField);
+        y += 25;
+
+        // API类型
+        TextWidget apiTypeLabel = new TextWidget(
+            centerX - fieldWidth / 2, y, labelWidth, 20,
+            Text.literal("API类型:"),
+            this.textRenderer
+        );
+        this.addDrawableChild(apiTypeLabel);
+
+        ButtonWidget apiTypeButton = ButtonWidget.builder(
+            Text.literal(selectedApiType),
+            button -> cycleApiType()
+        ).dimensions(centerX - fieldWidth / 2 + labelWidth + 5, y, fieldWidth - labelWidth - 5, 20).build();
+        this.addDrawableChild(apiTypeButton);
         y += 25;
 
         // 模型名称
@@ -217,9 +237,49 @@ public class LLMSettingsScreen extends Screen {
         this.clearAndInit();
     }
 
+    private void cycleApiType() {
+        int currentIndex = -1;
+        for (int i = 0; i < API_TYPES.length; i++) {
+            if (API_TYPES[i].equals(selectedApiType)) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        int nextIndex = (currentIndex + 1) % API_TYPES.length;
+        selectedApiType = API_TYPES[nextIndex];
+        config.apiType = selectedApiType;
+
+        // 切换类型时自动更新默认地址和端点
+        switch (selectedApiType) {
+            case "OLLAMA":
+                config.apiBaseUrl = "http://localhost:11434";
+                config.apiEndpoint = "/api/generate";
+                break;
+            case "OPENAI_COMPATIBLE":
+                config.apiBaseUrl = "http://localhost:11434/v1";
+                config.apiEndpoint = "/chat/completions";
+                break;
+            case "LM_STUDIO":
+                config.apiBaseUrl = "http://localhost:1234/v1";
+                config.apiEndpoint = "/chat/completions";
+                break;
+            case "LLAMA_CPP":
+                config.apiBaseUrl = "http://localhost:8080";
+                config.apiEndpoint = "/completion";
+                break;
+        }
+
+        // 更新地址输入框显示
+        apiUrlField.setText(config.apiBaseUrl);
+
+        this.clearAndInit();
+    }
+
     private void testConnection() {
         // 先把当前输入的值更新到config（临时，不保存到文件）
         config.apiBaseUrl = apiUrlField.getText();
+        config.apiType = selectedApiType;
         config.modelName = modelField.getText();
         config.currentPreset = selectedPreset;
 
@@ -255,6 +315,7 @@ public class LLMSettingsScreen extends Screen {
 
     private void saveSettings() {
         config.apiBaseUrl = apiUrlField.getText();
+        config.apiType = selectedApiType;
         config.modelName = modelField.getText();
         config.currentPreset = selectedPreset;
 
